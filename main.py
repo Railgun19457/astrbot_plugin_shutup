@@ -1,13 +1,14 @@
-from astrbot.api.event import filter, AstrMessageEvent
-from astrbot.api.star import Context, Star, register
-import astrbot.api.message_components as Comp
-from astrbot.api import logger, AstrBotConfig
-import time
-import re
-import json
 import asyncio
+import json
+import re
+import time
 from datetime import datetime
 from pathlib import Path
+
+import astrbot.api.message_components as Comp
+from astrbot.api import AstrBotConfig, logger
+from astrbot.api.event import AstrMessageEvent, filter
+from astrbot.api.star import Context, Star
 
 
 class ShutupPlugin(Star):
@@ -69,7 +70,9 @@ class ShutupPlugin(Star):
         self.silence_map = {}
         # ====== 新增：睡眠唤醒配置 ======
         self.bot_name = config.get("bot_name", "小爱")  # 默认叫小爱，可以在配置面板改喵
-        self.sleep_mode_enabled = config.get("sleep_mode_enabled", True)  # 新增：睡眠模式开关
+        self.sleep_mode_enabled = config.get(
+            "sleep_mode_enabled", True
+        )  # 新增：睡眠模式开关
         self.temp_wake_map = {}  # 记录谁把bot叫醒了
         # 睡眠唤醒持续时间（秒），确保为非负整数
         raw_temp_wake_duration = config.get("temp_wake_duration", 300)
@@ -407,7 +410,9 @@ class ShutupPlugin(Star):
                 wake_expiry = self.temp_wake_map.get(origin)
                 if wake_expiry and time.time() < wake_expiry:
                     remaining = int(wake_expiry - time.time())
-                    logger.info(f"[Shutup] ⏰ bot正处于梦游清醒状态 | 剩余: {remaining}s")
+                    logger.info(
+                        f"[Shutup] ⏰ bot正处于梦游清醒状态 | 剩余: {remaining}s"
+                    )
                 else:
                     if wake_expiry:
                         self.temp_wake_map.pop(origin, None)
@@ -420,30 +425,46 @@ class ShutupPlugin(Star):
                     if chain:
                         first_seg = chain[0]
                         # 1. 检查是否明确 @ 了 bot
-                        if isinstance(first_seg, Comp.At) and str(first_seg.qq) == str(event.get_self_id()):
+                        if isinstance(first_seg, Comp.At) and str(first_seg.qq) == str(
+                            event.get_self_id()
+                        ):
                             is_talking_to_me = True
                         # 2. 检查是否使用了设定的唤醒前缀 (wake_prefix)
                         elif isinstance(first_seg, Comp.Plain) and self.wake_prefix:
-                            if any(first_seg.text.startswith(p) for p in self.wake_prefix):
+                            if any(
+                                first_seg.text.startswith(p) for p in self.wake_prefix
+                            ):
                                 is_talking_to_me = True
 
                     # 3. 检查是否带有全局命令符 (如 /)
                     cmd_prefix = self.context.get_config().get("command_prefix", "/")
-                    prefixes = cmd_prefix if isinstance(cmd_prefix, list) else [cmd_prefix]
+                    prefixes = (
+                        cmd_prefix if isinstance(cmd_prefix, list) else [cmd_prefix]
+                    )
                     if any(text.startswith(p) for p in prefixes if p):  # 确保前缀不为空
                         is_talking_to_me = True
 
                     if is_talking_to_me:
-                        wake_word = self.unshutup_cmds[0] if self.unshutup_cmds else f"{self.bot_name}醒醒"
+                        wake_word = (
+                            self.unshutup_cmds[0]
+                            if self.unshutup_cmds
+                            else f"{self.bot_name}醒醒"
+                        )
 
                         # 如果需要前缀才加上，不需要的话就直接显示命令文本
                         display_prefix = ""
                         if self.require_prefix:
-                            display_prefix = cmd_prefix[0] if isinstance(cmd_prefix, list) and cmd_prefix else (
-                                "" if isinstance(cmd_prefix, list) else cmd_prefix)
+                            display_prefix = (
+                                cmd_prefix[0]
+                                if isinstance(cmd_prefix, list) and cmd_prefix
+                                else (
+                                    "" if isinstance(cmd_prefix, list) else cmd_prefix
+                                )
+                            )
 
                         yield event.plain_result(
-                            f"{self.bot_name}已经睡了，要叫醒{self.bot_name}吗~（回复：{display_prefix}{wake_word}）")
+                            f"{self.bot_name}已经睡了，要叫醒{self.bot_name}吗~（回复：{display_prefix}{wake_word}）"
+                        )
 
                     event.should_call_llm(False)
                     event.stop_event()
@@ -477,7 +498,11 @@ class ShutupPlugin(Star):
     ) -> str:
         """处理闭嘴指令"""
         # ====== 判断是不是在半夜提前哄睡 ======
-        is_sleep_early = self.sleep_mode_enabled and self._is_in_scheduled_time() and origin in getattr(self,'temp_wake_map',{})
+        is_sleep_early = (
+            self.sleep_mode_enabled
+            and self._is_in_scheduled_time()
+            and origin in getattr(self, "temp_wake_map", {})
+        )
         if is_sleep_early:
             self.temp_wake_map.pop(origin, None)  # 清除清醒倒计时
         # ==========================================
@@ -539,7 +564,9 @@ class ShutupPlugin(Star):
 
         now = time.time()
         # 增加状态检查：判断当前是否已处于临时的“梦游清醒”状态
-        is_already_awake = origin in self.temp_wake_map and now < self.temp_wake_map[origin]
+        is_already_awake = (
+            origin in self.temp_wake_map and now < self.temp_wake_map[origin]
+        )
 
         # 恢复原始群昵称(如果启用)
         if self.group_card_enabled:
@@ -558,7 +585,9 @@ class ShutupPlugin(Star):
 
                 # 如果已经是清醒状态，则返回简洁的确认信息，避免重复播放较长的“被叫醒”台词
                 if is_already_awake:
-                    return f"{self.bot_name} 已经醒啦，会再陪你聊 {wake_minutes} 分钟哦~"
+                    return (
+                        f"{self.bot_name} 已经醒啦，会再陪你聊 {wake_minutes} 分钟哦~"
+                    )
 
                 # 第一次被叫醒时的完整回复
                 logger.info(f"[Shutup] ⏰ 睡眠期间被叫醒，清醒 {wake_minutes} 分钟")
