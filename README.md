@@ -64,7 +64,23 @@
 - LLM 工具调用的闭嘴时长最长为 60 分钟
 
 ## 更新日志
-
+### v1.5.1
+- 修复的 Bug
+  - 命令匹配问题：命令列表现在按长度降序排列，_find_matching_command 匹配最长的命令，防止 "闭嘴" 先于 "闭嘴说话" 匹配
+  - getattr(self, "temp_wake_map", {}) — 替换为直接的 self.temp_wake_map（始终在 __init__ 中初始化），移除了不必要的防御性代码
+- 结构重构
+  - 新增 _find_matching_command() — 集中命令匹配，按最长前缀优先
+  - 新增 _parse_duration() — 从消息文本中提取时长，便于复用
+  - 新增 _handle_control_command() — 独立的权限检查与命令分发
+  - 新增 _handle_sleep_interaction() — 将睡眠模式逻辑从 handle_message 中剥离
+  - 新增 _is_talking_to_bot() — 提取了检查消息是否针对机器人的逻辑
+  - handle_message 从 ~100 行精简为 ~40 行
+- 质量改进
+  - 所有方法的参数和返回值均添加了完整类型提示
+  - 为所有公共和私有方法添加了完整的 Google 风格 docstring
+  - 按逻辑分区组织代码（持久化 / 时间 / 命令 / 群名片 / 处理器 / LLM 工具 / 生命周期）
+  - MessageEventResult 显式从 astrbot.api.event 导入
+  
 ### v1.5.0
 - 实现 LLM 工具调用功能
   - 新增 `shutup` 工具，LLM 可以根据用户意图自主决定闭嘴时长
