@@ -64,6 +64,17 @@
 - LLM 工具调用的闭嘴时长最长为 60 分钟
 
 ## 更新日志
+### v1.5.2
+- **程序文件架构重构**：从单文件拆分为 5 模块多文件结构
+  - `core/state.py` — SilenceStore 持久化状态管理
+  - `core/config.py` — 纯函数配置处理（可独立测试）
+  - `core/handlers.py` — MessageHandlers 消息/命令分发逻辑
+  - `core/group_card.py` — GroupCardUpdater 群名片更新（aiocqhttp）
+  - `tools/shutup_tool.py` — ShutupTool FunctionTool 数据类（AstrBot v4.5.1+ 推荐模式）
+  - `main.py` 精简为 ~190 行薄编排层
+- **LLM 工具迁移**：从 `@filter.llm_tool` 装饰器改为 `FunctionTool` 数据类，通过 `context.add_llm_tools()` 注册
+- **数据目录改进**：使用 `StarTools.get_data_dir()` 替代手动路径拼接
+
 ### v1.5.1
 - 修复的 Bug
   - 命令匹配问题：命令列表现在按长度降序排列，_find_matching_command 匹配最长的命令，防止 "闭嘴" 先于 "闭嘴说话" 匹配
