@@ -94,7 +94,7 @@ class ShutupPlugin(Star):
         self._handlers = MessageHandlers(self)
 
         # -- LLM tool (recommended pattern) ------------------------------ #
-        self.context.add_llm_tools(ShutupTool(plugin=self))
+        self._register_llm_tools()
 
         # -- Load-time summary -------------------------------------------- #
         time_info = ""
@@ -109,6 +109,30 @@ class ShutupPlugin(Star):
         )
         if self.group_card_enabled:
             logger.info(f"[Shutup] 群昵称更新已启用 | 模板: {self.group_card_template}")
+
+    def _unregister_llm_tools(self) -> None:
+        """Remove this plugin's LLM tool from AstrBot's tool list."""
+
+        tool_mgr = self.context.get_llm_tool_manager()
+        tool_mgr.func_list = [
+            tool
+            for tool in tool_mgr.func_list
+            if not (
+                tool.name == ShutupTool.name
+                and getattr(tool, "handler_module_path", None) == self.__module__
+            )
+        ]
+
+    def _register_llm_tools(self) -> None:
+        """Register the LLM tool only when enabled in plugin config."""
+
+        self._unregister_llm_tools()
+        if not self.config.get("llm_tool_enabled", False):
+            logger.info("[Shutup] LLM 工具未启用，跳过注册")
+            return
+
+        self.context.add_llm_tools(ShutupTool(plugin=self))
+        logger.info("[Shutup] 已注册 LLM 工具: shutup")
 
     # ------------------------------------------------------------------ #
     #  Time helper (used by handlers)
