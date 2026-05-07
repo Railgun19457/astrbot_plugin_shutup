@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 from astrbot.api import logger
 
@@ -19,8 +20,28 @@ class SilenceStore:
     def __init__(self, data_dir: Path) -> None:
         data_dir.mkdir(parents=True, exist_ok=True)
         self._path: Path = data_dir / "silence_map.json"
-        self._entries: dict[str, float] = {}
+        self._entries: dict[str, dict[str, Any]] = {}
         self.load()
+
+    def _normalize_entry(self, raw: Any) -> dict[str, Any] | None:
+        if isinstance(raw, dict):
+            expiry = raw.get("expiry")
+            if expiry is None:
+                return None
+
+            entry = {
+                "expiry": float(expiry),
+            }
+            if "original_card" in raw:
+                entry["original_card"] = str(raw.get("original_card") or "")
+            if "original_nickname" in raw:
+                entry["original_nickname"] = str(raw.get("original_nickname") or "")
+            return entry
+
+        if isinstance(raw, (int, float)):
+            return {"expiry": float(raw)}
+
+        return None
 
     # -- persistence ------------------------------------------------------- #
 
@@ -28,8 +49,15 @@ class SilenceStore:
         try:
             if self._path.exists():
                 with open(self._path, encoding="utf-8") as f:
-                    self._entries = json.load(f)
-                self._entries = {k: float(v) for k, v in self._entries.items()}
+                    raw_entries = json.load(f)
+
+                normalized_entries: dict[str, dict[str, Any]] = {}
+                for origin, raw in raw_entries.items():
+                    entry = self._normalize_entry(raw)
+                    if entry is not None:
+                        normalized_entries[origin] = entry
+
+                self._entries = normalized_entries
                 if self._entries:
                     logger.info(f"[Shutup] 加载了 {len(self._entries)} 条禁言记录")
         except Exception as e:
@@ -46,11 +74,28 @@ class SilenceStore:
 
     def set(self, origin: str, expiry: float) -> None:
         """Set an expiry timestamp for *origin*."""
-        self._entries[origin] = expiry
+        entry = self._entries.get(origin, {})
+        entry["expiry"] = expiry
+        self._entries[origin] = entry
 
     def set_permanent(self, origin: str) -> None:
         """Set a permanent silence entry for *origin*."""
-        self._entries[origin] = PERMANENT_EXPIRY
+        entry = self._entries.get(origin, {})
+        entry["expiry"] = PERMANENT_EXPIRY
+        self._entries[origin] = entry
+
+    def set_original_identity(
+        self,
+        origin: str,
+        original_card: str,
+        original_nickname: str,
+    ) -> None:
+        """Persist original bot names for group-card restoration."""
+
+        entry = self._entries.get(origin, {})
+        entry["original_card"] = original_card
+        entry["original_nickname"] = original_nickname
+        self._entries[origin] = entry
 
     def remove(self, origin: str) -> None:
         """Remove *origin* from the store."""
@@ -58,18 +103,32 @@ class SilenceStore:
 
     def get(self, origin: str) -> float | None:
         """Return the expiry timestamp for *origin*, or ``None``."""
-        return self._entries.get(origin)
+        entry = self._entries.get(origin)
+        if entry is None:
+            return None
+        expiry = entry.get("expiry")
+        return float(expiry) if expiry is not None else None
+
+    def get_original_identity(self, origin: str) -> tuple[str, str]:
+        """Return persisted original ``(card, nickname)`` for *origin*."""
+
+        entry = self._entries.get(origin, {})
+        return (
+            str(entry.get("original_card") or ""),
+            str(entry.get("original_nickname") or ""),
+        )
 
     def is_permanent(self, origin: str) -> bool:
         """Return whether *origin* is permanently silenced."""
-        return self._entries.get(origin) == PERMANENT_EXPIRY
+        return self.get(origin) == PERMANENT_EXPIRY
 
     def clean_expired(self, now: float) -> None:
         """Remove all entries whose expiry has passed."""
         expired = [
             origin
-            for origin, expiry in self._entries.items()
-            if expiry != PERMANENT_EXPIRY and expiry <= now
+            for origin, entry in self._entries.items()
+            if entry.get("expiry") != PERMANENT_EXPIRY
+            and float(entry.get("expiry", now + 1)) <= now
         ]
         for origin in expired:
             self._entries.pop(origin, None)

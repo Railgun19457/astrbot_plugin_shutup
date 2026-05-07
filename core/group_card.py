@@ -22,8 +22,6 @@ class GroupCardUpdater:
     def __init__(self, plugin: ShutupPlugin) -> None:
         self._plugin = plugin
         self.origin_to_event_map: dict[str, AstrMessageEvent] = {}
-        self._original_cards: dict[str, str] = {}
-        self._original_nicks: dict[str, str] = {}
         self._task: asyncio.Task | None = None
         self._started: bool = False
 
@@ -46,7 +44,7 @@ class GroupCardUpdater:
     async def restore_all(self) -> None:
         if not self._plugin.group_card_enabled:
             return
-        for origin in list(self._original_cards):
+        for origin in self._plugin._store.active_origins:
             event = self.origin_to_event_map.get(origin)
             if event is not None:
                 await self.update(event, origin, 0)
@@ -64,6 +62,7 @@ class GroupCardUpdater:
                 import time
 
                 now = time.time()
+                changed = False
                 for origin in self._plugin._store.active_origins:
                     expiry = self._plugin._store.get(origin)
                     if expiry is None:
@@ -84,9 +83,12 @@ class GroupCardUpdater:
                     else:
                         if event is not None:
                             await self.update(event, origin, 0)
-                        self._original_cards.pop(origin, None)
-                        self._original_nicks.pop(origin, None)
+                        self._plugin._store.remove(origin)
+                        changed = True
                         self.origin_to_event_map.pop(origin, None)
+
+                if changed:
+                    self._plugin._store.save()
 
         except asyncio.CancelledError:
             logger.info("[Shutup] 群昵称更新任务已停止")
@@ -126,7 +128,11 @@ class GroupCardUpdater:
             return
 
         try:
-            if origin not in self._original_cards:
+            original_card, original_nick = self._plugin._store.get_original_identity(
+                origin
+            )
+
+            if not original_card and not original_nick:
                 try:
                     member_info = await bot.call_action(
                         "get_group_member_info",
@@ -134,21 +140,25 @@ class GroupCardUpdater:
                         user_id=int(self_id),
                         no_cache=True,
                     )
-                    self._original_cards[origin] = member_info.get("card", "") or ""
-                    self._original_nicks[origin] = member_info.get("nickname", "") or ""
+                    original_card = member_info.get("card", "") or ""
+                    original_nick = member_info.get("nickname", "") or ""
+                    self._plugin._store.set_original_identity(
+                        origin,
+                        original_card=original_card,
+                        original_nickname=original_nick,
+                    )
+                    self._plugin._store.save()
                     logger.debug(
                         f"[Shutup] 保存原始信息 | "
-                        f"群昵称: {self._original_cards[origin]} | "
-                        f"QQ昵称: {self._original_nicks[origin]}"
+                        f"群昵称: {original_card} | "
+                        f"QQ昵称: {original_nick}"
                     )
                 except Exception as e:
                     logger.debug(f"[Shutup] 获取原始群昵称失败: {e}")
-                    self._original_cards[origin] = ""
-                    self._original_nicks[origin] = ""
+                    original_card = ""
+                    original_nick = ""
 
             if remaining_minutes is None or remaining_minutes > 0:
-                original_card = self._original_cards.get(origin, "")
-                original_nick = self._original_nicks.get(origin, "")
                 original_name = original_card if original_card else original_nick
                 remaining_display = (
                     "永久" if remaining_minutes is None else remaining_minutes
@@ -165,7 +175,7 @@ class GroupCardUpdater:
                     logger.warning(f"[Shutup] 群昵称模板占位符错误: {e}，使用默认格式")
                     card = f"[闭嘴中 {remaining_display}]"
             else:
-                card = self._original_cards.get(origin, "")
+                card = original_card
 
             await bot.call_action(
                 "set_group_card",

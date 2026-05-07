@@ -59,6 +59,8 @@ class MessageHandlers:
                 event.stop_event()
             else:
                 logger.info("[Shutup] 禁言已自动过期")
+                if self._p.group_card_enabled:
+                    await self._p._group_card.update(event, origin, 0)
                 self._p._store.remove(origin)
                 self._p._store.save()
         return None
@@ -161,9 +163,6 @@ class MessageHandlers:
         else:
             duration = 0
 
-        self._p._store.remove(origin)
-        self._p._store.save()
-
         now = time.time()
         was_already_awake = (
             origin in self._p.temp_wake_map and now < self._p.temp_wake_map[origin]
@@ -174,8 +173,11 @@ class MessageHandlers:
             event.continue_event()
             return None
 
-        if self._p.group_card_enabled:
+        if had_active_silence and self._p.group_card_enabled:
             await self._p._group_card.update(event, origin, 0)
+
+        self._p._store.remove(origin)
+        self._p._store.save()
 
         logger.info(f"[Shutup] 已解除禁言 | 已禁言: {duration}s")
         if was_already_awake:
