@@ -296,6 +296,9 @@ class MessageHandlers:
                 if any(first_seg.text.startswith(p) for p in wake_prefixes):
                     return True
 
+        if event.is_private_chat() or event.is_at_or_wake_command:
+            return True
+
         cmd_prefix = self._p.context.get_config().get("command_prefix", "/")
         prefixes = cmd_prefix if isinstance(cmd_prefix, list) else [cmd_prefix]
         return any(text.startswith(p) for p in prefixes if p)

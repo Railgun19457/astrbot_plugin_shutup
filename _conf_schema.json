@@ -101,7 +101,7 @@
         "type": "string",
         "description": "定时闭嘴中被呼叫时的提示文本",
         "hint": "支持占位符 {wake_word}/{wake_command}(临时唤醒指令)、{wake_minutes}(临时唤醒分钟数)、{temp_wake_duration}(临时唤醒秒数)",
-        "default": "我已经睡了，要临时叫醒我吗~（回复：{wake_word}）"
+        "default": "[自动回复]我已经睡了，要叫醒我吗~（回复：{wake_word}）"
       },
       "temp_wake_reply": {
         "type": "string",

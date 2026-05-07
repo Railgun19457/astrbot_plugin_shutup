@@ -230,7 +230,8 @@ class ShutupPlugin(Star):
     ) -> MessageEventResult:
         """Build a text result that is sent before stopping further propagation."""
 
-        return event.plain_result(text).stop_event()
+        event.should_call_llm(False)
+        return event.plain_result(text)
 
     def _stopped_optional_result(
         self, event: AstrMessageEvent, text: str | None
@@ -340,12 +341,14 @@ class ShutupPlugin(Star):
         """让机器人在当前会话中闭嘴一段时间。"""
         result = await self._handlers.handle_shutup_command(event, duration)
         yield self._stopped_plain_result(event, result)
+        event.stop_event()
 
     @filter.command("永久闭嘴", priority=10001)
     async def permanent_shutup(self, event: AstrMessageEvent) -> Any:
         """让机器人永久闭嘴，直到使用说话指令解除。"""
         result = await self._handlers.handle_permanent_shutup_command(event)
         yield self._stopped_plain_result(event, result)
+        event.stop_event()
 
     @filter.command("说话", priority=10001)
     async def unshutup(self, event: AstrMessageEvent) -> Any:
@@ -355,6 +358,7 @@ class ShutupPlugin(Star):
             yield
             return
         yield self._stopped_plain_result(event, result)
+        event.stop_event()
 
     @filter.command("醒醒", priority=10001)
     async def temp_wake(self, event: AstrMessageEvent) -> Any:
@@ -364,6 +368,7 @@ class ShutupPlugin(Star):
             yield
             return
         yield self._stopped_plain_result(event, result)
+        event.stop_event()
 
     # ------------------------------------------------------------------ #
     #  Main interception handler
@@ -374,7 +379,8 @@ class ShutupPlugin(Star):
         """Intercept every message; delegate to handlers module."""
         result = await self._handlers.dispatch(event)
         if result is not None:
-            yield self._stopped_optional_result(event, result)
+            yield self._stopped_plain_result(event, result)
+            event.stop_event()
 
     # ------------------------------------------------------------------ #
     #  Lifecycle
