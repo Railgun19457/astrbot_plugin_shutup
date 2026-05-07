@@ -81,7 +81,7 @@
       "sleep_mode_enabled": {
         "type": "bool",
         "description": "启用临时唤醒互动",
-        "hint": "开启后，定时闭嘴期间会有相应的叫醒互动提示语。若仅需要安静的定时禁言，请关闭此项",
+        "hint": "开启后，可以在定时闭嘴期间临时解除",
         "default": true
       },
       "temp_wake_commands": {
@@ -94,8 +94,44 @@
       "temp_wake_duration": {
         "type": "int",
         "description": "临时唤醒保持时长(秒)",
-        "hint": "睡眠模式下，bot 被叫醒后保持清醒的状态时长，过期后将重新入睡。默认 300 秒 (5 分钟)，推荐填写 60 的倍数",
+        "hint": "睡眠模式下，bot 被叫醒后保持清醒的空闲时长。临时唤醒期间每收到一条新消息都会刷新倒计时；持续该时长没有新消息后重新进入闭嘴状态。默认 300 秒 (5 分钟)，推荐填写 60 的倍数",
         "default": 300
+      },
+      "sleep_prompt_reply": {
+        "type": "string",
+        "description": "定时闭嘴中被呼叫时的提示文本",
+        "hint": "支持占位符 {wake_word}/{wake_command}(临时唤醒指令)、{wake_minutes}(临时唤醒分钟数)、{temp_wake_duration}(临时唤醒秒数)",
+        "default": "我已经睡了，要临时叫醒我吗~（回复：{wake_word}）"
+      },
+      "temp_wake_reply": {
+        "type": "string",
+        "description": "临时唤醒成功回复",
+        "hint": "支持占位符 {wake_minutes}(临时唤醒分钟数)、{temp_wake_duration}(临时唤醒秒数)、{wake_command}(临时唤醒指令)。启用 LLM 生成后，仅在生成失败时作为兜底回复",
+        "default": "我被叫醒了，还能陪你聊 {wake_minutes} 分钟哦。"
+      },
+      "temp_wake_already_reply": {
+        "type": "string",
+        "description": "已经处于临时唤醒状态时的回复",
+        "hint": "支持占位符 {wake_minutes}(临时唤醒分钟数)、{temp_wake_duration}(临时唤醒秒数)、{wake_command}(临时唤醒指令)",
+        "default": "已经醒啦，会再陪你聊 {wake_minutes} 分钟哦~"
+      },
+      "temp_wake_not_scheduled_reply": {
+        "type": "string",
+        "description": "非定时闭嘴期间触发临时唤醒的回复",
+        "hint": "支持占位符 {wake_command}(临时唤醒指令)",
+        "default": "当前不在定时闭嘴时间段内，不需要临时唤醒。"
+      },
+      "temp_wake_llm_reply_enabled": {
+        "type": "bool",
+        "description": "使用 LLM 生成临时唤醒回复",
+        "hint": "开启后，首次临时唤醒成功时会调用当前会话使用的 LLM 生成回复；失败时使用上面的临时唤醒成功回复作为兜底",
+        "default": false
+      },
+      "temp_wake_llm_prompt": {
+        "type": "text",
+        "description": "临时唤醒 LLM 提示词",
+        "hint": "支持占位符 {wake_command}(临时唤醒指令)、{wake_minutes}(临时唤醒分钟数)、{temp_wake_duration}(临时唤醒秒数)、{sender_name}(发送者昵称)",
+        "default": "用户刚刚在定时闭嘴期间用“{wake_command}”叫醒了你。请用简短、自然、带一点刚睡醒感觉的中文回复用户，告诉用户你会临时陪聊 {wake_minutes} 分钟。不要解释规则。"
       }
     }
   },

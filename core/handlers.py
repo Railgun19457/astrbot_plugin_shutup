@@ -88,6 +88,13 @@ class MessageHandlers:
         sender_id = event.get_sender_id()
         return str(sender_id) in [str(a) for a in admins]
 
+    def _format_template(self, template: str, **kwargs: object) -> str:
+        try:
+            return template.format(**kwargs)
+        except KeyError as e:
+            logger.warning(f"[Shutup] 临时唤醒模板占位符错误: {e}")
+            return template
+
     # ------------------------------------------------------------------ #
     #  Shutup / unshutup
     # ------------------------------------------------------------------ #
@@ -178,7 +185,12 @@ class MessageHandlers:
         origin = event.unified_msg_origin
 
         if not (self._p.sleep_mode_enabled and self._p._is_in_scheduled_time()):
-            return "当前不在定时闭嘴时间段内，不需要临时唤醒。"
+            return self._format_template(
+                self._p.temp_wake_not_scheduled_reply,
+                wake_command=self._p.temp_wake_cmds[0]
+                if self._p.temp_wake_cmds
+                else "醒醒",
+            )
 
         now = time.time()
         was_already_awake = (
@@ -186,12 +198,58 @@ class MessageHandlers:
         )
         self._p.temp_wake_map[origin] = now + self._p.temp_wake_duration
         wake_minutes = self._p.temp_wake_duration // 60
+        wake_command = self._p.temp_wake_cmds[0] if self._p.temp_wake_cmds else "醒醒"
 
         if was_already_awake:
-            return f"已经醒啦，会再陪你聊 {wake_minutes} 分钟哦~"
+            return self._format_template(
+                self._p.temp_wake_already_reply,
+                wake_minutes=wake_minutes,
+                temp_wake_duration=self._p.temp_wake_duration,
+                wake_command=wake_command,
+            )
 
         logger.info(f"[Shutup] 睡眠期间被临时唤醒，清醒 {wake_minutes} 分钟")
-        return f"我被叫醒了，还能陪你聊 {wake_minutes} 分钟哦。"
+        if self._p.temp_wake_llm_reply_enabled:
+            llm_reply = await self._generate_temp_wake_reply(
+                event=event,
+                wake_minutes=wake_minutes,
+                wake_command=wake_command,
+            )
+            if llm_reply:
+                return llm_reply
+
+        return self._format_template(
+            self._p.temp_wake_reply,
+            wake_minutes=wake_minutes,
+            temp_wake_duration=self._p.temp_wake_duration,
+            wake_command=wake_command,
+        )
+
+    async def _generate_temp_wake_reply(
+        self, event: AstrMessageEvent, wake_minutes: int, wake_command: str
+    ) -> str | None:
+        prompt = self._format_template(
+            self._p.temp_wake_llm_prompt,
+            wake_minutes=wake_minutes,
+            temp_wake_duration=self._p.temp_wake_duration,
+            wake_command=wake_command,
+            sender_name=event.get_sender_name(),
+        )
+        try:
+            provider_id = await self._p.context.get_current_chat_provider_id(
+                event.unified_msg_origin
+            )
+            response = await self._p.context.llm_generate(
+                chat_provider_id=provider_id,
+                prompt=prompt,
+                contexts=[],
+            )
+            reply = (response.completion_text or "").strip()
+            if reply:
+                return reply
+        except Exception as e:
+            logger.warning(f"[Shutup] 生成临时唤醒回复失败，使用模板回复: {e}")
+        return None
 
     # ------------------------------------------------------------------ #
     #  Sleep interaction
@@ -202,8 +260,9 @@ class MessageHandlers:
     ) -> str | None:
         wake_expiry = self._p.temp_wake_map.get(origin)
         if wake_expiry is not None and time.time() < wake_expiry:
-            remaining = int(wake_expiry - time.time())
-            logger.info(f"[Shutup] bot正处于梦游清醒状态 | 剩余: {remaining}s")
+            self._p.temp_wake_map[origin] = time.time() + self._p.temp_wake_duration
+            remaining = int(self._p.temp_wake_map[origin] - time.time())
+            logger.info(f"[Shutup] bot正处于临时清醒状态 | 剩余: {remaining}s")
             return None
 
         self._p.temp_wake_map.pop(origin, None)
@@ -212,7 +271,13 @@ class MessageHandlers:
         if self._is_talking_to_bot(event, text):
             wake_word = self._p.temp_wake_cmds[0] if self._p.temp_wake_cmds else "醒醒"
 
-            return f"我已经睡了，要临时叫醒我吗~（回复：{wake_word}）"
+            return self._format_template(
+                self._p.sleep_prompt_reply,
+                wake_word=wake_word,
+                wake_command=wake_word,
+                temp_wake_duration=self._p.temp_wake_duration,
+                wake_minutes=self._p.temp_wake_duration // 60,
+            )
 
         event.should_call_llm(False)
         event.stop_event()

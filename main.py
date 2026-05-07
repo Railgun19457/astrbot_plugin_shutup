@@ -128,6 +128,45 @@ class ShutupPlugin(Star):
             )
             twd = 0
         self.temp_wake_duration: int = twd
+        self.temp_wake_reply: str = scheduled_settings.get(
+            "temp_wake_reply",
+            config.get(
+                "temp_wake_reply", "我被叫醒了，还能陪你聊 {wake_minutes} 分钟哦。"
+            ),
+        )
+        self.temp_wake_already_reply: str = scheduled_settings.get(
+            "temp_wake_already_reply",
+            config.get(
+                "temp_wake_already_reply",
+                "已经醒啦，会再陪你聊 {wake_minutes} 分钟哦~",
+            ),
+        )
+        self.temp_wake_not_scheduled_reply: str = scheduled_settings.get(
+            "temp_wake_not_scheduled_reply",
+            config.get(
+                "temp_wake_not_scheduled_reply",
+                "当前不在定时闭嘴时间段内，不需要临时唤醒。",
+            ),
+        )
+        self.sleep_prompt_reply: str = scheduled_settings.get(
+            "sleep_prompt_reply",
+            config.get(
+                "sleep_prompt_reply", "我已经睡了，要临时叫醒我吗~（回复：{wake_word}）"
+            ),
+        )
+        self.temp_wake_llm_reply_enabled: bool = scheduled_settings.get(
+            "temp_wake_llm_reply_enabled",
+            config.get("temp_wake_llm_reply_enabled", False),
+        )
+        self.temp_wake_llm_prompt: str = scheduled_settings.get(
+            "temp_wake_llm_prompt",
+            config.get(
+                "temp_wake_llm_prompt",
+                "用户刚刚在定时闭嘴期间用“{wake_command}”叫醒了你。"
+                "请用简短、自然、带一点刚睡醒感觉的中文回复用户，"
+                "告诉用户你会临时陪聊 {wake_minutes} 分钟。不要解释规则。",
+            ),
+        )
 
         # -- Persisted state ---------------------------------------------- #
         data_dir = StarTools.get_data_dir("astrbot_plugin_shutup")
