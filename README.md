@@ -46,8 +46,6 @@
   - `temp_wake_duration`：睡眠模式下被临时叫醒后的空闲保持时长（秒），每条新消息都会刷新倒计时，默认 `300`
   - `sleep_prompt_reply`：定时闭嘴中被呼叫时的提示文本
   - `temp_wake_reply`：临时唤醒成功回复，可使用 `{wake_minutes}` 等占位符
-  - `temp_wake_already_reply`：已经处于临时唤醒状态时的回复
-  - `temp_wake_not_scheduled_reply`：非定时闭嘴期间触发临时唤醒的回复
   - `temp_wake_llm_reply_enabled`：是否使用 LLM 生成临时唤醒回复
   - `temp_wake_llm_prompt`：临时唤醒 LLM 提示词，支持 `{wake_command}`、`{wake_minutes}`、`{temp_wake_duration}`、`{sender_name}`
 - `group_card_settings`：群昵称显示设置

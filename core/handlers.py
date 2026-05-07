@@ -148,11 +148,12 @@ class MessageHandlers:
         logger.info(f"[Shutup] 已永久闭嘴 | 来源: {origin}")
         return "好的，我会一直闭嘴，直到你让我说话。"
 
-    async def handle_unshutup_command(self, event: AstrMessageEvent) -> str:
+    async def handle_unshutup_command(self, event: AstrMessageEvent) -> str | None:
         if self._p.require_admin and not self._check_admin(event):
             return "管理员才能使用此指令"
 
         origin = event.unified_msg_origin
+        had_active_silence = origin in self._p._store
         old_expiry = self._p._store.get(origin)
         if old_expiry is not None and not self._p._store.is_permanent(origin):
             now = time.time()
@@ -168,6 +169,11 @@ class MessageHandlers:
             origin in self._p.temp_wake_map and now < self._p.temp_wake_map[origin]
         )
 
+        if not had_active_silence and not was_already_awake:
+            logger.info("[Shutup] 当前未闭嘴，忽略解除闭嘴指令并继续后续流程")
+            event.continue_event()
+            return None
+
         if self._p.group_card_enabled:
             await self._p._group_card.update(event, origin, 0)
 
@@ -178,19 +184,16 @@ class MessageHandlers:
             )
         return self._p.unshutup_reply.format(duration=duration, expiry_time="已解除")
 
-    async def handle_temp_wake_command(self, event: AstrMessageEvent) -> str:
+    async def handle_temp_wake_command(self, event: AstrMessageEvent) -> str | None:
         if self._p.require_admin and not self._check_admin(event):
             return "管理员才能使用此指令"
 
         origin = event.unified_msg_origin
 
         if not (self._p.sleep_mode_enabled and self._p._is_in_scheduled_time()):
-            return self._format_template(
-                self._p.temp_wake_not_scheduled_reply,
-                wake_command=self._p.temp_wake_cmds[0]
-                if self._p.temp_wake_cmds
-                else "醒醒",
-            )
+            logger.info("[Shutup] 非定时闭嘴期间忽略临时唤醒指令并继续后续流程")
+            event.continue_event()
+            return None
 
         now = time.time()
         was_already_awake = (
@@ -201,12 +204,9 @@ class MessageHandlers:
         wake_command = self._p.temp_wake_cmds[0] if self._p.temp_wake_cmds else "醒醒"
 
         if was_already_awake:
-            return self._format_template(
-                self._p.temp_wake_already_reply,
-                wake_minutes=wake_minutes,
-                temp_wake_duration=self._p.temp_wake_duration,
-                wake_command=wake_command,
-            )
+            logger.info("[Shutup] 已处于临时唤醒状态，忽略临时唤醒指令并继续后续流程")
+            event.continue_event()
+            return None
 
         logger.info(f"[Shutup] 睡眠期间被临时唤醒，清醒 {wake_minutes} 分钟")
         if self._p.temp_wake_llm_reply_enabled:
