@@ -10,7 +10,7 @@ import astrbot.api.message_components as Comp
 from astrbot.api import logger
 
 if TYPE_CHECKING:
-    from astrbot.api.event import AstrMessageEvent, MessageEventResult
+    from astrbot.api.event import AstrMessageEvent
 
     from ..main import ShutupPlugin
 
@@ -27,9 +27,7 @@ class MessageHandlers:
     #  Main dispatch
     # ------------------------------------------------------------------ #
 
-    async def dispatch(
-        self, event: AstrMessageEvent
-    ) -> MessageEventResult | str | None:
+    async def dispatch(self, event: AstrMessageEvent) -> str | None:
         """Entry point called from ``handle_message``.
 
         Returns a value that the Star handler should ``yield``, or
@@ -98,10 +96,8 @@ class MessageHandlers:
         self, event: AstrMessageEvent, duration_text: str = ""
     ) -> str:
         if self._p.require_admin and not self._check_admin(event):
-            event.stop_event()
             return "管理员才能使用此指令"
 
-        event.stop_event()
         origin = event.unified_msg_origin
 
         is_sleep_early = (
@@ -130,10 +126,8 @@ class MessageHandlers:
 
     async def handle_permanent_shutup_command(self, event: AstrMessageEvent) -> str:
         if self._p.require_admin and not self._check_admin(event):
-            event.stop_event()
             return "管理员才能使用此指令"
 
-        event.stop_event()
         origin = event.unified_msg_origin
         self._p.temp_wake_map.pop(origin, None)
         self._p._store.set_permanent(origin)
@@ -149,10 +143,8 @@ class MessageHandlers:
 
     async def handle_unshutup_command(self, event: AstrMessageEvent) -> str:
         if self._p.require_admin and not self._check_admin(event):
-            event.stop_event()
             return "管理员才能使用此指令"
 
-        event.stop_event()
         origin = event.unified_msg_origin
         old_expiry = self._p._store.get(origin)
         if old_expiry is not None and not self._p._store.is_permanent(origin):
@@ -181,10 +173,8 @@ class MessageHandlers:
 
     async def handle_temp_wake_command(self, event: AstrMessageEvent) -> str:
         if self._p.require_admin and not self._check_admin(event):
-            event.stop_event()
             return "管理员才能使用此指令"
 
-        event.stop_event()
         origin = event.unified_msg_origin
 
         if not (self._p.sleep_mode_enabled and self._p._is_in_scheduled_time()):
@@ -209,7 +199,7 @@ class MessageHandlers:
 
     async def _handle_sleep_interaction(
         self, event: AstrMessageEvent, text: str, origin: str
-    ) -> MessageEventResult | str | None:
+    ) -> str | None:
         wake_expiry = self._p.temp_wake_map.get(origin)
         if wake_expiry is not None and time.time() < wake_expiry:
             remaining = int(wake_expiry - time.time())
@@ -222,7 +212,6 @@ class MessageHandlers:
         if self._is_talking_to_bot(event, text):
             wake_word = self._p.temp_wake_cmds[0] if self._p.temp_wake_cmds else "醒醒"
 
-            event.stop_event()
             return f"我已经睡了，要临时叫醒我吗~（回复：{wake_word}）"
 
         event.should_call_llm(False)

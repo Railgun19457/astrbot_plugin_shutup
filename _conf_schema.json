@@ -1,102 +1,120 @@
 {
-  "shutup_commands": {
-    "type": "list",
-    "description": "闭嘴指令列表",
-    "hint": "首项作为 AstrBot 框架主指令，其余项作为别名。框架指令触发方式遵循 AstrBot 平台设置，例如命令前缀、唤醒词、@机器人或私聊。",
-    "items": { "type": "string" },
-    "default": ["闭嘴"]
-  },
-  "unshutup_commands": {
-    "type": "list",
-    "description": "解除闭嘴指令列表",
-    "hint": "首项作为 AstrBot 框架主指令，其余项作为别名。框架指令触发方式遵循 AstrBot 平台设置，例如命令前缀、唤醒词、@机器人或私聊。",
-    "items": { "type": "string" },
-    "default": ["说话"]
-  },
-  "permanent_shutup_commands": {
-    "type": "list",
-    "description": "永久闭嘴指令列表",
-    "hint": "触发后机器人会一直闭嘴，直到使用解除闭嘴指令。首项作为 AstrBot 框架主指令，其余项作为别名。",
-    "items": { "type": "string" },
-    "default": ["永久闭嘴"]
-  },
-  "temp_wake_commands": {
-    "type": "list",
-    "description": "临时唤醒指令列表",
-    "hint": "仅在定时闭嘴且睡眠互动启用期间生效。触发后机器人会临时恢复回复一段时间。首项作为 AstrBot 框架主指令，其余项作为别名。",
-    "items": { "type": "string" },
-    "default": ["醒醒"]
-  },
-  "default_duration": {
-    "type": "int",
-    "description": "默认闭嘴时长(秒)",
-    "hint": "范围0-86400秒",
-    "default": 600
-  },
-  "shutup_reply": {
-    "type": "string",
-    "description": "闭嘴时的回复消息",
-    "hint":"支持占位符 {duration}(禁言时长，秒)和 {expiry_time}(禁言结束时间)" ,
-    "default": "好的，我闭嘴了~"
-  },
-  "unshutup_reply": {
-    "type": "string",
-    "description": "解除闭嘴时的回复消息",
-    "hint": "支持占位符 {duration}(禁言时长，秒)和 {expiry_time}(禁言结束时间)",
-    "default": "好的，我恢复说话了~"
-  },
-  "priority": {
-    "type": "int",
-    "description": "插件优先级",
-    "hint": "数值越大优先级越高",
-    "default": 10000
-  },
-  "scheduled_shutup_enabled": {
-    "type": "bool",
-    "description": "启用定时闭嘴",
-    "hint": "开启后，bot 会在指定时间段内自动保持沉默",
-    "default": false
-  },
-  "sleep_mode_enabled": {
-    "type": "bool",
-    "description": "启用睡眠唤醒互动",
-    "hint": "开启后，定时闭嘴期间会有相应的哄睡、叫醒等互动提示语。若仅需要安静的定时禁言，请关闭此项",
-    "default": true
-  },
-"temp_wake_duration": {
-    "type": "int",
-    "description": "临时唤醒保持时长(秒)",
-    "hint": "睡眠模式下，bot 被叫醒后保持清醒的状态时长，过期后将重新入睡。默认 300 秒 (5分钟)，推荐填写60的倍数，叫醒会显示'时间//60'分钟",
-    "default": 300
-  },
-  "scheduled_shutup_times": {
-    "type": "text",
-    "description": "定时闭嘴时间段",
-    "hint": "每行一个时间段，格式: HH:MM-HH:MM (24小时制)\n例如:\n23:00-07:00 (晚11点到早7点)\n12:00-14:00 (中午12点到下午2点)\n支持跨天时间段",
-    "default": "23:00-07:00"
-  },
-  "group_card_update_enabled": {
-    "type": "bool",
-    "description": "启用群昵称剩余时长显示",
-    "hint": "开启后，bot 在闭嘴期间会修改群昵称显示剩余时长，每分钟更新一次",
-    "default": false
-  },
-  "group_card_template": {
-    "type": "string",
-    "description": "群昵称显示模板",
-    "hint": "支持占位符:\n {remaining} - 剩余分钟数\n {original_card} - 原始群昵称(群名片)\n {original_nickname} - 原始QQ昵称\n {original_name} - 原始名称(优先使用群昵称，若无则使用QQ昵称)",
-    "default": "{original_name}[闭嘴中 {remaining} 分钟]"
-  },
   "llm_tool_enabled": {
     "type": "bool",
     "description": "启用 LLM 工具调用",
-    "hint": "开启后，LLM 可以主动调用闭嘴/解除闭嘴功能",
-    "default": false
+    "hint": "开启后，LLM 可以主动调用闭嘴功能",
+    "default": true
   },
   "require_admin": {
     "type": "bool",
     "description": "需要管理员权限",
-    "hint": "开启后，只有 bot 管理员才能使用闭嘴/解除闭嘴指令",
+    "hint": "开启后，只有 bot 管理员才能使用闭嘴、永久闭嘴、说话、醒醒等指令",
     "default": false
+  },
+  "priority": {
+    "type": "int",
+    "description": "插件优先级",
+    "hint": "数值越大优先级越高,如果你不知道这是什么,请不要修改",
+    "default": 10000
+  },
+  "command_settings": {
+    "type": "object",
+    "description": "闭嘴/说话指令设置",
+    "hint": "指令列表首项作为 AstrBot 框架主指令，其余项作为别名",
+    "items": {
+      "unshutup_commands": {
+        "type": "list",
+        "description": "说话指令列表",
+        "items": { "type": "string" },
+        "default": ["说话"]
+      },
+      "shutup_commands": {
+        "type": "list",
+        "description": "闭嘴指令列表",
+        "items": { "type": "string" },
+        "default": ["闭嘴"]
+      },
+      "permanent_shutup_commands": {
+        "type": "list",
+        "description": "永久闭嘴指令列表",
+        "hint": "触发后机器人会一直闭嘴，直到使用说话指令解除",
+        "items": { "type": "string" },
+        "default": ["永久闭嘴"]
+      },
+      "default_duration": {
+        "type": "int",
+        "description": "默认闭嘴时长(秒)",
+        "hint": "范围 0-86400 秒",
+        "default": 600
+      },
+      "shutup_reply": {
+        "type": "string",
+        "description": "闭嘴时的回复消息",
+        "hint": "支持占位符 {duration}(禁言时长，秒) 和 {expiry_time}(禁言结束时间)",
+        "default": "好的，我闭嘴了~"
+      },
+      "unshutup_reply": {
+        "type": "string",
+        "description": "解除闭嘴时的回复消息",
+        "hint": "支持占位符 {duration}(禁言时长，秒) 和 {expiry_time}(禁言结束时间)",
+        "default": "好的，我恢复说话了~"
+      }
+    }
+  },
+  "scheduled_settings": {
+    "type": "object",
+    "description": "定时闭嘴设置",
+    "items": {
+      "scheduled_shutup_enabled": {
+        "type": "bool",
+        "description": "启用定时闭嘴",
+        "hint": "开启后，bot 会在指定时间段内自动保持沉默",
+        "default": false
+      },
+      "scheduled_shutup_times": {
+        "type": "list",
+        "description": "定时闭嘴时间段",
+        "hint": "每项一个时间段，格式: HH:MM-HH:MM (24 小时制)。例如 23:00-07:00、12:00-14:00。支持跨天时间段",
+        "items": { "type": "string" },
+        "default": ["23:00-07:00"]
+      },
+      "sleep_mode_enabled": {
+        "type": "bool",
+        "description": "启用临时唤醒互动",
+        "hint": "开启后，定时闭嘴期间会有相应的叫醒互动提示语。若仅需要安静的定时禁言，请关闭此项",
+        "default": true
+      },
+      "temp_wake_commands": {
+        "type": "list",
+        "description": "临时唤醒指令列表",
+        "hint": "仅在定时闭嘴且睡眠互动启用期间生效。触发后机器人会临时恢复回复一段时间",
+        "items": { "type": "string" },
+        "default": ["醒醒"]
+      },
+      "temp_wake_duration": {
+        "type": "int",
+        "description": "临时唤醒保持时长(秒)",
+        "hint": "睡眠模式下，bot 被叫醒后保持清醒的状态时长，过期后将重新入睡。默认 300 秒 (5 分钟)，推荐填写 60 的倍数",
+        "default": 300
+      }
+    }
+  },
+  "group_card_settings": {
+    "type": "object",
+    "description": "群昵称显示设置",
+    "items": {
+      "group_card_update_enabled": {
+        "type": "bool",
+        "description": "启用群昵称剩余时长显示",
+        "hint": "开启后，bot 在闭嘴期间会修改群昵称显示剩余时长，每分钟更新一次",
+        "default": false
+      },
+      "group_card_template": {
+        "type": "string",
+        "description": "群昵称显示模板",
+        "hint": "支持占位符:\n {remaining} - 剩余分钟数或永久\n {original_card} - 原始群昵称(群名片)\n {original_nickname} - 原始 QQ 昵称\n {original_name} - 原始名称(优先使用群昵称，若无则使用 QQ 昵称)",
+        "default": "{original_name}[闭嘴中 {remaining} 分钟]"
+      }
+    }
   }
 }

@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Any
 
 from astrbot.api import AstrBotConfig, logger
-from astrbot.api.event import AstrMessageEvent, filter
+from astrbot.api.event import AstrMessageEvent, MessageEventResult, filter
 from astrbot.api.star import Context, Star
 from astrbot.core.star.filter.command import CommandFilter
 from astrbot.core.star.star_handler import star_handlers_registry
@@ -30,21 +30,34 @@ class ShutupPlugin(Star):
         # -- Plugin identity --------------------------------------------- #
         self.plugin_priority: int = config.get("priority", 10000)
 
+        command_settings = config.get("command_settings", {})
+        scheduled_settings = config.get("scheduled_settings", {})
+        group_card_settings = config.get("group_card_settings", {})
+
         # -- Command config ---------------------------------------------- #
         self.shutup_cmds: list[str] = normalize_commands(
-            config.get("shutup_commands", ["闭嘴"]),
+            command_settings.get(
+                "shutup_commands", config.get("shutup_commands", ["闭嘴"])
+            ),
             fallback=["闭嘴"],
         )
         self.unshutup_cmds: list[str] = normalize_commands(
-            config.get("unshutup_commands", ["说话"]),
+            command_settings.get(
+                "unshutup_commands", config.get("unshutup_commands", ["说话"])
+            ),
             fallback=["说话"],
         )
         self.permanent_shutup_cmds: list[str] = normalize_commands(
-            config.get("permanent_shutup_commands", ["永久闭嘴"]),
+            command_settings.get(
+                "permanent_shutup_commands",
+                config.get("permanent_shutup_commands", ["永久闭嘴"]),
+            ),
             fallback=["永久闭嘴"],
         )
         self.temp_wake_cmds: list[str] = normalize_commands(
-            config.get("temp_wake_commands", ["醒醒"]),
+            scheduled_settings.get(
+                "temp_wake_commands", config.get("temp_wake_commands", ["醒醒"])
+            ),
             fallback=["醒醒"],
         )
         self._dedupe_configured_commands()
@@ -53,34 +66,54 @@ class ShutupPlugin(Star):
         self.require_admin: bool = config.get("require_admin", False)
 
         # -- Duration settings ------------------------------------------- #
-        self.default_duration: int = clamp_duration(config.get("default_duration", 600))
+        self.default_duration: int = clamp_duration(
+            command_settings.get(
+                "default_duration", config.get("default_duration", 600)
+            )
+        )
 
         # -- Reply templates --------------------------------------------- #
-        self.shutup_reply: str = config.get("shutup_reply", "好的，我闭嘴了~")
-        self.unshutup_reply: str = config.get("unshutup_reply", "好的，我恢复说话了~")
+        self.shutup_reply: str = command_settings.get(
+            "shutup_reply", config.get("shutup_reply", "好的，我闭嘴了~")
+        )
+        self.unshutup_reply: str = command_settings.get(
+            "unshutup_reply", config.get("unshutup_reply", "好的，我恢复说话了~")
+        )
 
         # -- Group card -------------------------------------------------- #
-        self.group_card_enabled: bool = config.get("group_card_update_enabled", False)
-        self.group_card_template: str = config.get(
-            "group_card_template", "[闭嘴中 {remaining}分钟]"
+        self.group_card_enabled: bool = group_card_settings.get(
+            "group_card_update_enabled",
+            config.get("group_card_update_enabled", False),
+        )
+        self.group_card_template: str = group_card_settings.get(
+            "group_card_template",
+            config.get("group_card_template", "[闭嘴中 {remaining}分钟]"),
         )
 
         # -- Scheduled shutup -------------------------------------------- #
-        self.scheduled_enabled: bool = config.get("scheduled_shutup_enabled", False)
-        self.scheduled_times_text: str = config.get(
-            "scheduled_shutup_times", "23:00-07:00"
+        self.scheduled_enabled: bool = scheduled_settings.get(
+            "scheduled_shutup_enabled",
+            config.get("scheduled_shutup_enabled", False),
+        )
+        self.scheduled_times_config: str | list[str] = scheduled_settings.get(
+            "scheduled_shutup_times",
+            config.get("scheduled_shutup_times", ["23:00-07:00"]),
         )
         self.scheduled_time_ranges: list[tuple[str, str]] = parse_time_ranges(
-            self.scheduled_times_text
+            self.scheduled_times_config
         )
         if self.scheduled_enabled and not self.scheduled_time_ranges:
             logger.warning("[Shutup] 未配置有效的定时时间段，定时闭嘴将不会生效")
 
         # -- Sleep / wake ------------------------------------------------- #
-        self.sleep_mode_enabled: bool = config.get("sleep_mode_enabled", True)
+        self.sleep_mode_enabled: bool = scheduled_settings.get(
+            "sleep_mode_enabled", config.get("sleep_mode_enabled", True)
+        )
         self.temp_wake_map: dict[str, float] = {}
 
-        raw_temp_wake = config.get("temp_wake_duration", 300)
+        raw_temp_wake = scheduled_settings.get(
+            "temp_wake_duration", config.get("temp_wake_duration", 300)
+        )
         try:
             twd = int(raw_temp_wake)
         except (TypeError, ValueError):
@@ -166,6 +199,22 @@ class ShutupPlugin(Star):
                     return
 
         logger.warning(f"[Shutup] 未找到框架指令处理器: {handler_name}")
+
+    def _stopped_plain_result(
+        self, event: AstrMessageEvent, text: str
+    ) -> MessageEventResult:
+        """Build a text result that is sent before stopping further propagation."""
+
+        return event.plain_result(text).stop_event()
+
+    def _stopped_optional_result(
+        self, event: AstrMessageEvent, text: str | None
+    ) -> MessageEventResult | None:
+        """Build a stopped text result, or stop silently when text is empty."""
+
+        if text is None:
+            return None
+        return self._stopped_plain_result(event, text)
 
     def _unregister_llm_tools(self) -> None:
         """Remove this plugin's LLM tool from AstrBot's tool list."""
@@ -265,25 +314,25 @@ class ShutupPlugin(Star):
     async def shutup(self, event: AstrMessageEvent, duration: str = "") -> Any:
         """让机器人在当前会话中闭嘴一段时间。"""
         result = await self._handlers.handle_shutup_command(event, duration)
-        yield result
+        yield self._stopped_plain_result(event, result)
 
     @filter.command("永久闭嘴", priority=10001)
     async def permanent_shutup(self, event: AstrMessageEvent) -> Any:
         """让机器人永久闭嘴，直到使用说话指令解除。"""
         result = await self._handlers.handle_permanent_shutup_command(event)
-        yield result
+        yield self._stopped_plain_result(event, result)
 
     @filter.command("说话", priority=10001)
     async def unshutup(self, event: AstrMessageEvent) -> Any:
         """解除当前会话的闭嘴状态。"""
         result = await self._handlers.handle_unshutup_command(event)
-        yield result
+        yield self._stopped_plain_result(event, result)
 
     @filter.command("醒醒", priority=10001)
     async def temp_wake(self, event: AstrMessageEvent) -> Any:
         """在定时闭嘴期间临时唤醒机器人。"""
         result = await self._handlers.handle_temp_wake_command(event)
-        yield result
+        yield self._stopped_plain_result(event, result)
 
     # ------------------------------------------------------------------ #
     #  Main interception handler
@@ -294,7 +343,7 @@ class ShutupPlugin(Star):
         """Intercept every message; delegate to handlers module."""
         result = await self._handlers.dispatch(event)
         if result is not None:
-            yield result
+            yield self._stopped_optional_result(event, result)
 
     # ------------------------------------------------------------------ #
     #  Lifecycle

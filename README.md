@@ -28,21 +28,25 @@
 
 在插件配置文件中可自定义以下设置：
 
-- `shutup_commands`：闭嘴指令列表，首项作为框架主指令，其余项作为别名，默认 `闭嘴`
-- `unshutup_commands`：解除闭嘴指令列表，首项作为框架主指令，其余项作为别名，默认 `说话`
-- `permanent_shutup_commands`：永久闭嘴指令列表，首项作为框架主指令，其余项作为别名，默认 `永久闭嘴`
-- `temp_wake_commands`：临时唤醒指令列表，首项作为框架主指令，其余项作为别名，默认 `醒醒`
-- `default_duration`：默认闭嘴时长(秒)，默认 `600`
-- `shutup_reply`：闭嘴时的回复消息，支持占位符 `{duration}`(禁言时长，秒)和 `{expiry_time}`(禁言结束时间)，默认 `好的，我闭嘴了~`
-- `unshutup_reply`：解除闭嘴时的回复消息，支持占位符 `{duration}` 和 `{expiry_time}`，默认 `好的，我恢复说话了~`
-- `scheduled_shutup_enabled`：是否启用定时闭嘴，默认`关闭`
-- `scheduled_shutup_times`：定时闭嘴时间段
-- `sleep_mode_enabled`：是否启用睡眠唤醒互动（开启后定时闭嘴期间会有相应的哄睡、叫醒等提示语），默认 `启用`
-- `temp_wake_duration`：睡眠模式下被临时叫醒后保持清醒的时长（秒），默认使用插件内置值，如需调整请在配置文件中显式设置
-- `group_card_update_enabled`：是否启用群昵称剩余时长显示
-- `group_card_template`：群昵称显示模板
 - `llm_tool_enabled`：是否启用 LLM 工具调用，默认`关闭`
 - `require_admin`：是否需要管理员权限，默认`关闭`
+- `priority`：插件优先级，默认 `10000`
+- `command_settings`：闭嘴/说话指令设置
+  - `shutup_commands`：闭嘴指令列表，首项作为框架主指令，其余项作为别名，默认 `闭嘴`
+  - `unshutup_commands`：解除闭嘴指令列表，首项作为框架主指令，其余项作为别名，默认 `说话`
+  - `permanent_shutup_commands`：永久闭嘴指令列表，首项作为框架主指令，其余项作为别名，默认 `永久闭嘴`
+  - `default_duration`：默认闭嘴时长(秒)，默认 `600`
+  - `shutup_reply`：闭嘴时的回复消息，支持占位符 `{duration}`(禁言时长，秒)和 `{expiry_time}`(禁言结束时间)，默认 `好的，我闭嘴了~`
+  - `unshutup_reply`：解除闭嘴时的回复消息，支持占位符 `{duration}` 和 `{expiry_time}`，默认 `好的，我恢复说话了~`
+- `scheduled_settings`：定时闭嘴设置
+  - `scheduled_shutup_enabled`：是否启用定时闭嘴，默认`关闭`
+  - `scheduled_shutup_times`：定时闭嘴时间段列表，每项格式 `HH:MM-HH:MM`
+  - `sleep_mode_enabled`：是否启用睡眠唤醒互动，默认 `启用`
+  - `temp_wake_commands`：临时唤醒指令列表，首项作为框架主指令，其余项作为别名，默认 `醒醒`
+  - `temp_wake_duration`：睡眠模式下被临时叫醒后保持清醒的时长（秒），默认 `300`
+- `group_card_settings`：群昵称显示设置
+  - `group_card_update_enabled`：是否启用群昵称剩余时长显示
+  - `group_card_template`：群昵称显示模板
 
 ## LLM 工具调用
 
