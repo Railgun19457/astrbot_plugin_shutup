@@ -2,14 +2,30 @@
   "shutup_commands": {
     "type": "list",
     "description": "闭嘴指令列表",
+    "hint": "首项作为 AstrBot 框架主指令，其余项作为别名。框架指令触发方式遵循 AstrBot 平台设置，例如命令前缀、唤醒词、@机器人或私聊。",
     "items": { "type": "string" },
-    "default": ["闭嘴", "stop","睡吧"]
+    "default": ["闭嘴"]
   },
   "unshutup_commands": {
     "type": "list",
     "description": "解除闭嘴指令列表",
+    "hint": "首项作为 AstrBot 框架主指令，其余项作为别名。框架指令触发方式遵循 AstrBot 平台设置，例如命令前缀、唤醒词、@机器人或私聊。",
     "items": { "type": "string" },
-    "default": ["说话", "停止闭嘴","醒醒"]
+    "default": ["说话"]
+  },
+  "permanent_shutup_commands": {
+    "type": "list",
+    "description": "永久闭嘴指令列表",
+    "hint": "触发后机器人会一直闭嘴，直到使用解除闭嘴指令。首项作为 AstrBot 框架主指令，其余项作为别名。",
+    "items": { "type": "string" },
+    "default": ["永久闭嘴"]
+  },
+  "temp_wake_commands": {
+    "type": "list",
+    "description": "临时唤醒指令列表",
+    "hint": "仅在定时闭嘴且睡眠互动启用期间生效。触发后机器人会临时恢复回复一段时间。首项作为 AstrBot 框架主指令，其余项作为别名。",
+    "items": { "type": "string" },
+    "default": ["醒醒"]
   },
   "default_duration": {
     "type": "int",
@@ -29,11 +45,6 @@
     "hint": "支持占位符 {duration}(禁言时长，秒)和 {expiry_time}(禁言结束时间)",
     "default": "好的，我恢复说话了~"
   },
-  "require_prefix": {
-    "type": "bool",
-    "description": "是否需要命令前缀",
-    "default": true
-  },
   "priority": {
     "type": "int",
     "description": "插件优先级",
@@ -45,12 +56,6 @@
     "description": "启用定时闭嘴",
     "hint": "开启后，bot 会在指定时间段内自动保持沉默",
     "default": false
-  },
-"bot_name": {
-    "type": "string",
-    "description": "机器人的自称",
-    "hint":"用于睡眠提示语。建议将此名字同步加入 AstrBot 平台设置中的‘唤醒词’，以实现直接喊名字唤醒的功能喵！",
-    "default": "小爱"
   },
   "sleep_mode_enabled": {
     "type": "bool",
@@ -80,7 +85,7 @@
     "type": "string",
     "description": "群昵称显示模板",
     "hint": "支持占位符:\n {remaining} - 剩余分钟数\n {original_card} - 原始群昵称(群名片)\n {original_nickname} - 原始QQ昵称\n {original_name} - 原始名称(优先使用群昵称，若无则使用QQ昵称)",
-    "default": "{original_name}[闭嘴中 {remaining}分钟]"
+    "default": "{original_name}[闭嘴中 {remaining} 分钟]"
   },
   "llm_tool_enabled": {
     "type": "bool",

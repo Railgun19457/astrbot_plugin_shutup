@@ -7,6 +7,8 @@ from pathlib import Path
 
 from astrbot.api import logger
 
+PERMANENT_EXPIRY = -1.0
+
 
 class SilenceStore:
     """Persisted silence state: ``origin -> expiry_timestamp``.
@@ -46,6 +48,10 @@ class SilenceStore:
         """Set an expiry timestamp for *origin*."""
         self._entries[origin] = expiry
 
+    def set_permanent(self, origin: str) -> None:
+        """Set a permanent silence entry for *origin*."""
+        self._entries[origin] = PERMANENT_EXPIRY
+
     def remove(self, origin: str) -> None:
         """Remove *origin* from the store."""
         self._entries.pop(origin, None)
@@ -54,9 +60,17 @@ class SilenceStore:
         """Return the expiry timestamp for *origin*, or ``None``."""
         return self._entries.get(origin)
 
+    def is_permanent(self, origin: str) -> bool:
+        """Return whether *origin* is permanently silenced."""
+        return self._entries.get(origin) == PERMANENT_EXPIRY
+
     def clean_expired(self, now: float) -> None:
         """Remove all entries whose expiry has passed."""
-        expired = [origin for origin, expiry in self._entries.items() if expiry <= now]
+        expired = [
+            origin
+            for origin, expiry in self._entries.items()
+            if expiry != PERMANENT_EXPIRY and expiry <= now
+        ]
         for origin in expired:
             self._entries.pop(origin, None)
 

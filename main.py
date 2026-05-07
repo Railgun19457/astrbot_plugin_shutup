@@ -9,6 +9,8 @@ from typing import Any
 from astrbot.api import AstrBotConfig, logger
 from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.star import Context, Star
+from astrbot.core.star.filter.command import CommandFilter
+from astrbot.core.star.star_handler import star_handlers_registry
 from astrbot.core.star.star_tools import StarTools
 
 from .core.config import clamp_duration, normalize_commands, parse_time_ranges
@@ -28,16 +30,26 @@ class ShutupPlugin(Star):
         # -- Plugin identity --------------------------------------------- #
         self.plugin_priority: int = config.get("priority", 10000)
 
-        # -- Wake & command config --------------------------------------- #
-        self.wake_prefix: list[str] = self.context.get_config().get("wake_prefix", [])
+        # -- Command config ---------------------------------------------- #
         self.shutup_cmds: list[str] = normalize_commands(
-            config.get("shutup_commands", ["闭嘴", "stop"])
+            config.get("shutup_commands", ["闭嘴"]),
+            fallback=["闭嘴"],
         )
         self.unshutup_cmds: list[str] = normalize_commands(
-            config.get("unshutup_commands", ["说话", "停止闭嘴"])
+            config.get("unshutup_commands", ["说话"]),
+            fallback=["说话"],
         )
+        self.permanent_shutup_cmds: list[str] = normalize_commands(
+            config.get("permanent_shutup_commands", ["永久闭嘴"]),
+            fallback=["永久闭嘴"],
+        )
+        self.temp_wake_cmds: list[str] = normalize_commands(
+            config.get("temp_wake_commands", ["醒醒"]),
+            fallback=["醒醒"],
+        )
+        self._dedupe_configured_commands()
+        self._apply_configured_commands()
 
-        self.require_prefix: bool = config.get("require_prefix", False)
         self.require_admin: bool = config.get("require_admin", False)
 
         # -- Duration settings ------------------------------------------- #
@@ -65,7 +77,6 @@ class ShutupPlugin(Star):
             logger.warning("[Shutup] 未配置有效的定时时间段，定时闭嘴将不会生效")
 
         # -- Sleep / wake ------------------------------------------------- #
-        self.bot_name: str = config.get("bot_name", "小爱")
         self.sleep_mode_enabled: bool = config.get("sleep_mode_enabled", True)
         self.temp_wake_map: dict[str, float] = {}
 
@@ -103,12 +114,58 @@ class ShutupPlugin(Star):
                 f"{s}-{e}" for s, e in self.scheduled_time_ranges
             )
         logger.info(
-            f"[Shutup] 已加载 | 指令: {self.shutup_cmds} & {self.unshutup_cmds}"
+            f"[Shutup] 已加载 | 指令: 说话={self.unshutup_cmds}"
+            f" 闭嘴={self.shutup_cmds} 永久闭嘴={self.permanent_shutup_cmds}"
+            f" 醒醒={self.temp_wake_cmds}"
             f" | 默认时长: {self.default_duration}s"
             f" | 优先级: {self.plugin_priority}{time_info}"
         )
         if self.group_card_enabled:
             logger.info(f"[Shutup] 群昵称更新已启用 | 模板: {self.group_card_template}")
+
+    def _apply_configured_commands(self) -> None:
+        """Apply configured command names to AstrBot framework command filters."""
+
+        self._set_command_filter("shutup", self.shutup_cmds)
+        self._set_command_filter("unshutup", self.unshutup_cmds)
+        self._set_command_filter("permanent_shutup", self.permanent_shutup_cmds)
+        self._set_command_filter("temp_wake", self.temp_wake_cmds)
+
+    def _dedupe_configured_commands(self) -> None:
+        """Avoid duplicate framework command names across the four command groups."""
+
+        reserved = set(self.temp_wake_cmds) | set(self.permanent_shutup_cmds)
+        self.shutup_cmds = [cmd for cmd in self.shutup_cmds if cmd not in reserved]
+        self.unshutup_cmds = [cmd for cmd in self.unshutup_cmds if cmd not in reserved]
+
+        if not self.shutup_cmds:
+            self.shutup_cmds = ["闭嘴"]
+        if not self.unshutup_cmds:
+            self.unshutup_cmds = ["说话"]
+
+    def _set_command_filter(self, handler_name: str, commands: list[str]) -> None:
+        if not commands:
+            return
+
+        for handler in star_handlers_registry.get_handlers_by_module_name(
+            self.__module__
+        ):
+            if handler.handler_name != handler_name:
+                continue
+
+            for event_filter in handler.event_filters:
+                if isinstance(event_filter, CommandFilter):
+                    event_filter.command_name = commands[0]
+                    event_filter._original_command_name = commands[0]
+                    event_filter.alias = set(commands[1:])
+                    event_filter._cmpl_cmd_names = None
+                    logger.info(
+                        f"[Shutup] 已注册框架指令 {handler_name}: "
+                        f"{commands[0]} | 别名: {commands[1:]}"
+                    )
+                    return
+
+        logger.warning(f"[Shutup] 未找到框架指令处理器: {handler_name}")
 
     def _unregister_llm_tools(self) -> None:
         """Remove this plugin's LLM tool from AstrBot's tool list."""
@@ -201,7 +258,35 @@ class ShutupPlugin(Star):
         return f"已设置闭嘴 {int(duration_seconds / 60)} 分钟，到期时间: {expiry_time}"
 
     # ------------------------------------------------------------------ #
-    #  Main handler
+    #  Framework commands
+    # ------------------------------------------------------------------ #
+
+    @filter.command("闭嘴", priority=10001)
+    async def shutup(self, event: AstrMessageEvent, duration: str = "") -> Any:
+        """让机器人在当前会话中闭嘴一段时间。"""
+        result = await self._handlers.handle_shutup_command(event, duration)
+        yield result
+
+    @filter.command("永久闭嘴", priority=10001)
+    async def permanent_shutup(self, event: AstrMessageEvent) -> Any:
+        """让机器人永久闭嘴，直到使用说话指令解除。"""
+        result = await self._handlers.handle_permanent_shutup_command(event)
+        yield result
+
+    @filter.command("说话", priority=10001)
+    async def unshutup(self, event: AstrMessageEvent) -> Any:
+        """解除当前会话的闭嘴状态。"""
+        result = await self._handlers.handle_unshutup_command(event)
+        yield result
+
+    @filter.command("醒醒", priority=10001)
+    async def temp_wake(self, event: AstrMessageEvent) -> Any:
+        """在定时闭嘴期间临时唤醒机器人。"""
+        result = await self._handlers.handle_temp_wake_command(event)
+        yield result
+
+    # ------------------------------------------------------------------ #
+    #  Main interception handler
     # ------------------------------------------------------------------ #
 
     @filter.event_message_type(filter.EventMessageType.ALL, priority=10000)

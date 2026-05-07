@@ -38,13 +38,6 @@ class MessageHandlers:
         text = event.get_message_str().strip()
         origin = event.unified_msg_origin
 
-        shutup_cmd, unshutup_cmd = self._find_matching_command(text)
-
-        if shutup_cmd is not None or unshutup_cmd is not None:
-            return await self._handle_control_command(
-                event, text, origin, shutup_cmd, unshutup_cmd
-            )
-
         if self._p._is_in_scheduled_time():
             if self._p.sleep_mode_enabled:
                 return await self._handle_sleep_interaction(event, text, origin)
@@ -55,7 +48,11 @@ class MessageHandlers:
 
         expiry = self._p._store.get(origin)
         if expiry is not None:
-            if time.time() < expiry:
+            if self._p._store.is_permanent(origin):
+                logger.info(f"[Shutup] 永久闭嘴中，消息已拦截 | 来源: {origin}")
+                event.should_call_llm(False)
+                event.stop_event()
+            elif time.time() < expiry:
                 remaining = int(expiry - time.time())
                 logger.info(
                     f"[Shutup] 消息已拦截 | 来源: {origin} | 剩余: {remaining}s"
@@ -72,19 +69,9 @@ class MessageHandlers:
     #  Command helpers
     # ------------------------------------------------------------------ #
 
-    def _find_matching_command(self, text: str) -> tuple[str | None, str | None]:
-        """Find the longest matching shutup or unshutup command."""
-        for cmd in self._p.shutup_cmds:
-            if text.startswith(cmd):
-                return cmd, None
-        for cmd in self._p.unshutup_cmds:
-            if text.startswith(cmd):
-                return None, cmd
-        return None, None
-
-    def _parse_duration(self, text: str, shutup_cmd: str) -> int:
-        """Extract custom duration from a shutup command message."""
-        match = re.match(rf"^{re.escape(shutup_cmd)}\s*(\d+)([smhd])?", text)
+    def _parse_duration(self, duration_text: str) -> int:
+        """Extract custom duration from a framework command argument."""
+        match = re.match(r"^(\d+)([smhd])?", duration_text.strip().lower())
         if match:
             val = int(match.group(1))
             unit = match.group(2) or "s"
@@ -95,21 +82,6 @@ class MessageHandlers:
     #  Permission checks
     # ------------------------------------------------------------------ #
 
-    def _check_prefix(self, event: AstrMessageEvent) -> bool:
-        if not self._p.require_prefix:
-            return True
-
-        chain = event.get_messages()
-        if not chain:
-            return False
-
-        first_seg = chain[0]
-        if isinstance(first_seg, Comp.Plain):
-            return any(first_seg.text.startswith(p) for p in self._p.wake_prefix)
-        if isinstance(first_seg, Comp.At):
-            return str(first_seg.qq) == str(event.get_self_id())
-        return False
-
     def _check_admin(self, event: AstrMessageEvent) -> bool:
         if not self._p.require_admin:
             return True
@@ -119,43 +91,18 @@ class MessageHandlers:
         return str(sender_id) in [str(a) for a in admins]
 
     # ------------------------------------------------------------------ #
-    #  Control command dispatch
+    #  Shutup / unshutup
     # ------------------------------------------------------------------ #
 
-    async def _handle_control_command(
-        self,
-        event: AstrMessageEvent,
-        text: str,
-        origin: str,
-        shutup_cmd: str | None,
-        unshutup_cmd: str | None,
-    ) -> MessageEventResult | str:
-        if not self._check_prefix(event):
-            return ""
-
+    async def handle_shutup_command(
+        self, event: AstrMessageEvent, duration_text: str = ""
+    ) -> str:
         if self._p.require_admin and not self._check_admin(event):
             event.stop_event()
             return "管理员才能使用此指令"
 
-        if shutup_cmd is not None:
-            event.stop_event()
-            return await self._handle_shutup_command(event, text, origin)
-
-        if unshutup_cmd is not None:
-            event.stop_event()
-            return await self._handle_unshutup_command(event, origin)
-
-        return ""
-
-    # ------------------------------------------------------------------ #
-    #  Shutup / unshutup
-    # ------------------------------------------------------------------ #
-
-    async def _handle_shutup_command(
-        self, event: AstrMessageEvent, text: str, origin: str
-    ) -> str:
-        shutup_cmd, _ = self._find_matching_command(text)
-        assert shutup_cmd is not None
+        event.stop_event()
+        origin = event.unified_msg_origin
 
         is_sleep_early = (
             self._p.sleep_mode_enabled
@@ -165,7 +112,7 @@ class MessageHandlers:
         if is_sleep_early:
             self._p.temp_wake_map.pop(origin, None)
 
-        duration = self._parse_duration(text, shutup_cmd)
+        duration = self._parse_duration(duration_text)
 
         self._p._apply_silence(origin, duration, event)
 
@@ -179,16 +126,36 @@ class MessageHandlers:
         )
         logger.info(f"[Shutup] 已禁言 | 时长: {duration}s | 到期: {expiry_time}")
 
-        if is_sleep_early:
-            return f"那{self._p.bot_name}继续回被窝啦，晚安~"
-
         return self._p.shutup_reply.format(duration=duration, expiry_time=expiry_time)
 
-    async def _handle_unshutup_command(
-        self, event: AstrMessageEvent, origin: str
-    ) -> str:
+    async def handle_permanent_shutup_command(self, event: AstrMessageEvent) -> str:
+        if self._p.require_admin and not self._check_admin(event):
+            event.stop_event()
+            return "管理员才能使用此指令"
+
+        event.stop_event()
+        origin = event.unified_msg_origin
+        self._p.temp_wake_map.pop(origin, None)
+        self._p._store.set_permanent(origin)
+        self._p._store.save()
+        self._p._group_card.origin_to_event_map[origin] = event
+        self._p._group_card.ensure_started()
+
+        if self._p.group_card_enabled:
+            await self._p._group_card.update(event, origin, None)
+
+        logger.info(f"[Shutup] 已永久闭嘴 | 来源: {origin}")
+        return "好的，我会一直闭嘴，直到你让我说话。"
+
+    async def handle_unshutup_command(self, event: AstrMessageEvent) -> str:
+        if self._p.require_admin and not self._check_admin(event):
+            event.stop_event()
+            return "管理员才能使用此指令"
+
+        event.stop_event()
+        origin = event.unified_msg_origin
         old_expiry = self._p._store.get(origin)
-        if old_expiry is not None:
+        if old_expiry is not None and not self._p._store.is_permanent(origin):
             now = time.time()
             duration = int(max(0, now - (old_expiry - self._p.default_duration)))
         else:
@@ -205,21 +172,36 @@ class MessageHandlers:
         if self._p.group_card_enabled:
             await self._p._group_card.update(event, origin, 0)
 
-        if self._p.sleep_mode_enabled and self._p._is_in_scheduled_time():
-            self._p.temp_wake_map[origin] = now + self._p.temp_wake_duration
-            wake_minutes = self._p.temp_wake_duration // 60
-
-            if was_already_awake:
-                return f"{self._p.bot_name} 已经醒啦，会再陪你聊 {wake_minutes} 分钟哦~"
-
-            logger.info(f"[Shutup] 睡眠期间被叫醒，清醒 {wake_minutes} 分钟")
-            return (
-                f"谁呀...{self._p.bot_name}被叫醒了，"
-                f"还能强撑着陪你聊 {wake_minutes} 分钟哦..."
-            )
-
         logger.info(f"[Shutup] 已解除禁言 | 已禁言: {duration}s")
-        return f"{self._p.bot_name}早就醒着啦！随时可以陪你聊天哦~"
+        if was_already_awake:
+            return self._p.unshutup_reply.format(
+                duration=duration, expiry_time="已解除"
+            )
+        return self._p.unshutup_reply.format(duration=duration, expiry_time="已解除")
+
+    async def handle_temp_wake_command(self, event: AstrMessageEvent) -> str:
+        if self._p.require_admin and not self._check_admin(event):
+            event.stop_event()
+            return "管理员才能使用此指令"
+
+        event.stop_event()
+        origin = event.unified_msg_origin
+
+        if not (self._p.sleep_mode_enabled and self._p._is_in_scheduled_time()):
+            return "当前不在定时闭嘴时间段内，不需要临时唤醒。"
+
+        now = time.time()
+        was_already_awake = (
+            origin in self._p.temp_wake_map and now < self._p.temp_wake_map[origin]
+        )
+        self._p.temp_wake_map[origin] = now + self._p.temp_wake_duration
+        wake_minutes = self._p.temp_wake_duration // 60
+
+        if was_already_awake:
+            return f"已经醒啦，会再陪你聊 {wake_minutes} 分钟哦~"
+
+        logger.info(f"[Shutup] 睡眠期间被临时唤醒，清醒 {wake_minutes} 分钟")
+        return f"我被叫醒了，还能陪你聊 {wake_minutes} 分钟哦。"
 
     # ------------------------------------------------------------------ #
     #  Sleep interaction
@@ -238,26 +220,10 @@ class MessageHandlers:
         logger.info("[Shutup] 定时闭嘴(睡眠)生效中")
 
         if self._is_talking_to_bot(event, text):
-            wake_word = (
-                self._p.unshutup_cmds[0]
-                if self._p.unshutup_cmds
-                else f"{self._p.bot_name}醒醒"
-            )
-
-            prefix_display = ""
-            if self._p.require_prefix:
-                cmd_prefix = self._p.context.get_config().get("command_prefix", "/")
-                if isinstance(cmd_prefix, list) and cmd_prefix:
-                    prefix_display = cmd_prefix[0]
-                elif isinstance(cmd_prefix, str):
-                    prefix_display = cmd_prefix
+            wake_word = self._p.temp_wake_cmds[0] if self._p.temp_wake_cmds else "醒醒"
 
             event.stop_event()
-            return (
-                f"{self._p.bot_name}已经睡了，"
-                f"要叫醒{self._p.bot_name}吗~"
-                f"（回复：{prefix_display}{wake_word}）"
-            )
+            return f"我已经睡了，要临时叫醒我吗~（回复：{wake_word}）"
 
         event.should_call_llm(False)
         event.stop_event()
@@ -265,14 +231,15 @@ class MessageHandlers:
 
     def _is_talking_to_bot(self, event: AstrMessageEvent, text: str) -> bool:
         chain = event.get_messages()
+        wake_prefixes = self._p.context.get_config().get("wake_prefix", [])
         if chain:
             first_seg = chain[0]
             if isinstance(first_seg, Comp.At) and str(first_seg.qq) == str(
                 event.get_self_id()
             ):
                 return True
-            if isinstance(first_seg, Comp.Plain) and self._p.wake_prefix:
-                if any(first_seg.text.startswith(p) for p in self._p.wake_prefix):
+            if isinstance(first_seg, Comp.Plain) and wake_prefixes:
+                if any(first_seg.text.startswith(p) for p in wake_prefixes):
                     return True
 
         cmd_prefix = self._p.context.get_config().get("command_prefix", "/")

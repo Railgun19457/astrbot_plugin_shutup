@@ -52,17 +52,32 @@ def parse_time_ranges(time_text: str) -> list[tuple[str, str]]:
 # ------------------------------------------------------------------ #
 
 
-def normalize_commands(raw: str | list[str]) -> list[str]:
+def normalize_commands(
+    raw: str | list[str], fallback: list[str] | None = None
+) -> list[str]:
     """Normalize a command list from config.
 
-    Strings are split on whitespace/commas.  The result is sorted by
-    length descending so that longer commands are matched first.
+    Strings are split on whitespace/commas. The original order is preserved:
+    the first item is used as the framework command name and the rest are
+    registered as aliases.
     """
     if isinstance(raw, str):
         cmds = re.split(r"[\s,]+", raw)
     else:
         cmds = list(raw)
-    return sorted([c for c in cmds if c], key=len, reverse=True)
+
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for cmd in cmds:
+        cmd = str(cmd).strip()
+        if not cmd or cmd in seen:
+            continue
+        normalized.append(cmd)
+        seen.add(cmd)
+
+    if not normalized and fallback:
+        return normalize_commands(fallback)
+    return normalized
 
 
 # ------------------------------------------------------------------ #

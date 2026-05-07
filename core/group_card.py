@@ -68,8 +68,14 @@ class GroupCardUpdater:
                     expiry = self._plugin._store.get(origin)
                     if expiry is None:
                         continue
-                    remaining_seconds = expiry - now
                     event = self.origin_to_event_map.get(origin)
+
+                    if self._plugin._store.is_permanent(origin):
+                        if event is not None:
+                            await self.update(event, origin, None)
+                        continue
+
+                    remaining_seconds = expiry - now
 
                     if remaining_seconds > 0:
                         if event is not None:
@@ -90,7 +96,7 @@ class GroupCardUpdater:
     # -- card update ------------------------------------------------------ #
 
     async def update(
-        self, event: AstrMessageEvent, origin: str, remaining_minutes: int
+        self, event: AstrMessageEvent, origin: str, remaining_minutes: int | None
     ) -> None:
         if not self._plugin.group_card_enabled:
             return
@@ -140,21 +146,24 @@ class GroupCardUpdater:
                     self._original_cards[origin] = ""
                     self._original_nicks[origin] = ""
 
-            if remaining_minutes > 0:
+            if remaining_minutes is None or remaining_minutes > 0:
                 original_card = self._original_cards.get(origin, "")
                 original_nick = self._original_nicks.get(origin, "")
                 original_name = original_card if original_card else original_nick
+                remaining_display = (
+                    "永久" if remaining_minutes is None else remaining_minutes
+                )
 
                 try:
                     card = self._plugin.group_card_template.format(
-                        remaining=remaining_minutes,
+                        remaining=remaining_display,
                         original_card=original_card,
                         original_nickname=original_nick,
                         original_name=original_name,
                     )
                 except KeyError as e:
                     logger.warning(f"[Shutup] 群昵称模板占位符错误: {e}，使用默认格式")
-                    card = f"[闭嘴中 {remaining_minutes}分钟]"
+                    card = f"[闭嘴中 {remaining_display}]"
             else:
                 card = self._original_cards.get(origin, "")
 
