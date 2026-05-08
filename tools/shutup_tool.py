@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any
 from pydantic import Field
 from pydantic.dataclasses import dataclass as pydantic_dataclass
 
+from astrbot.api import logger
 from astrbot.core.agent.tool import FunctionTool
 
 if TYPE_CHECKING:
@@ -25,10 +26,7 @@ class ShutupTool(FunctionTool[None]):
     plugin: Any = Field(default=None, repr=False, exclude=True)
 
     name: str = "shutup"
-    description: str = (
-        "在指定时间内停止回复消息。当用户表达希望你暂时闭嘴,保持安静,"
-        "不要再说话时,可以调用此工具"
-    )
+    description: str = "在指定时间内停止回复消息。当用户表达希望你暂时闭嘴,保持安静,不要再说话时,可以调用此工具"
     parameters: dict = Field(
         default_factory=lambda: {
             "type": "object",
@@ -56,3 +54,43 @@ class ShutupTool(FunctionTool[None]):
             return "LLM 工具未就绪"
 
         return await self.plugin._run_llm_shutup(event, duration, unit)
+
+
+@pydantic_dataclass
+class ShutupSuppressTool(FunctionTool[None]):
+    """LLM 工具：请求不对当前触发消息产生回复。
+
+    使用场景：当 LLM 决定不对唤醒它的那条消息进行回复时，调用此工具。
+    """
+
+    plugin: Any = Field(default=None, repr=False, exclude=True)
+
+    name: str = "shutup_suppress_reply"
+    description: str = "当你决定不回复当前这条消息时调用"
+    parameters: dict = Field(
+        default_factory=lambda: {
+            "type": "object",
+            "properties": {},
+        }
+    )
+
+    async def run(self, event: AstrMessageEvent) -> str | None:
+        if self.plugin is None:
+            return "LLM 工具未就绪"
+
+        try:
+            event.set_extra("_shutup_suppress_this", True)
+            logger.info(
+                "[Shutup] LLM 请求本条消息静默处理，已设置 suppress 标记 | 来源: %s",
+                event.unified_msg_origin,
+            )
+            return None
+        except Exception:
+            return "请求不回复本条消息失败"
+
+
+def build_llm_tools(plugin) -> list[FunctionTool[None]]:
+    tools = [ShutupTool(plugin=plugin), ShutupSuppressTool(plugin=plugin)]
+    for t in tools:
+        t.plugin = plugin
+    return tools

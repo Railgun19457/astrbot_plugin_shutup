@@ -21,7 +21,7 @@ from .core.config import clamp_duration, normalize_commands, parse_time_ranges
 from .core.group_card import GroupCardUpdater
 from .core.handlers import MessageHandlers
 from .core.state import SilenceStore
-from .tools.shutup_tool import ShutupTool
+from .tools.shutup_tool import build_llm_tools
 
 
 class ShutupPlugin(Star):
@@ -147,7 +147,18 @@ class ShutupPlugin(Star):
         self._group_card = GroupCardUpdater(self)
         self._handlers = MessageHandlers(self)
 
-        # -- LLM tool (recommended pattern) ------------------------------ #
+        # -- LLM tool(s) (recommended pattern) --------------------------- #
+        # 支持多工具配置，通过 llm_tool_options 完全控制
+        raw_llm_tools = config.get("llm_tool_options", [])
+        if not isinstance(raw_llm_tools, list):
+            raw_llm_tools = []
+        self.llm_tool_options: set[str] = set(raw_llm_tools)
+
+        self.LLM_TOOL_NAME_BY_OPTION = {
+            "shutup": "shutup",
+            "suppress_reply": "shutup_suppress_reply",
+        }
+
         self._register_llm_tools()
 
         # -- Load-time summary -------------------------------------------- #
@@ -231,25 +242,40 @@ class ShutupPlugin(Star):
         """Remove this plugin's LLM tool from AstrBot's tool list."""
 
         tool_mgr = self.context.get_llm_tool_manager()
+        tool_names = set(self.LLM_TOOL_NAME_BY_OPTION.values())
         tool_mgr.func_list = [
             tool
             for tool in tool_mgr.func_list
             if not (
-                tool.name == ShutupTool.name
-                and getattr(tool, "handler_module_path", None) == self.__module__
+                getattr(tool, "handler_module_path", None) == self.__module__
+                and tool.name in tool_names
             )
         ]
 
     def _register_llm_tools(self) -> None:
-        """Register the LLM tool only when enabled in plugin config."""
+        """Register the LLM tool(s) according to plugin config options."""
 
         self._unregister_llm_tools()
-        if not self.config.get("llm_tool_enabled", True):
-            logger.info("[Shutup] LLM 工具未启用，跳过注册")
+
+        if not self.llm_tool_options:
+            logger.info("[Shutup] LLM 工具未启用或未选择，跳过注册")
             return
 
-        self.context.add_llm_tools(ShutupTool(plugin=self))
-        logger.info("[Shutup] 已注册 LLM 工具: shutup")
+        enabled_tool_names = {
+            self.LLM_TOOL_NAME_BY_OPTION[key]
+            for key in self.llm_tool_options
+            if key in self.LLM_TOOL_NAME_BY_OPTION
+        }
+
+        tools = [t for t in build_llm_tools(self) if t.name in enabled_tool_names]
+        if tools:
+            # expand tools when adding
+            self.context.add_llm_tools(*tools)
+            logger.info("[Shutup] 已注册 LLM 工具: %s", ",".join(t.name for t in tools))
+        else:
+            logger.info(
+                "[Shutup] 未找到匹配的 LLM 工具以注册: %s", sorted(enabled_tool_names)
+            )
 
     # ------------------------------------------------------------------ #
     #  Time helper (used by handlers)
@@ -355,7 +381,7 @@ class ShutupPlugin(Star):
         self, event: AstrMessageEvent, duration: int, unit: str = "m"
     ) -> str:
         """Entry point for the LLM function tool."""
-        if not self.config.get("llm_tool_enabled", True):
+        if "shutup" not in self.llm_tool_options:
             return "LLM 工具未启用"
 
         time_units = {"s": 1, "m": 60, "h": 3600, "d": 86400}
@@ -465,6 +491,24 @@ class ShutupPlugin(Star):
         logger.info(
             "[Shutup] 已丢弃闭嘴期间待发送的模型回复 | "
             f"来源: {event.unified_msg_origin}"
+        )
+        event.clear_result()
+        event.should_call_llm(False)
+
+    @filter.on_decorating_result(priority=10002)
+    async def suppress_tool_requested_no_reply(self, event: AstrMessageEvent) -> None:
+        """Fallback: drop any prepared result when LLM requested silent handling."""
+
+        if not event.get_extra("_shutup_suppress_this"):
+            return
+
+        result = event.get_result()
+        if result is None:
+            return
+
+        logger.info(
+            "[Shutup] 检测到 suppress 标记，兜底丢弃待发送结果 | 来源: %s",
+            event.unified_msg_origin,
         )
         event.clear_result()
         event.should_call_llm(False)
