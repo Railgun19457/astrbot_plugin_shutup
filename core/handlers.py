@@ -40,6 +40,7 @@ class MessageHandlers:
             if self._p.sleep_mode_enabled:
                 return await self._handle_sleep_interaction(event, text, origin)
             logger.info("[Shutup] 定时闭嘴生效中")
+            self._p._stop_active_responses(event)
             event.should_call_llm(False)
             event.stop_event()
             return None
@@ -143,6 +144,7 @@ class MessageHandlers:
         self._p._store.save()
         self._p._group_card.origin_to_event_map[origin] = event
         self._p._group_card.ensure_started()
+        self._p._stop_active_responses(event)
 
         if self._p.group_card_enabled:
             await self._p._group_card.update(event, origin, None)
@@ -281,6 +283,7 @@ class MessageHandlers:
                 wake_minutes=self._p.temp_wake_duration // 60,
             )
 
+        self._p._stop_active_responses(event)
         event.should_call_llm(False)
         event.stop_event()
         return None

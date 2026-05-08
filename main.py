@@ -3,15 +3,19 @@
 from __future__ import annotations
 
 import time
+from collections.abc import AsyncGenerator
 from datetime import datetime
 from typing import Any
 
 from astrbot.api import AstrBotConfig, logger
 from astrbot.api.event import AstrMessageEvent, MessageEventResult, filter
+from astrbot.api.provider import LLMResponse
 from astrbot.api.star import Context, Star
+from astrbot.core.message.message_event_result import ResultContentType
 from astrbot.core.star.filter.command import CommandFilter
 from astrbot.core.star.star_handler import star_handlers_registry
 from astrbot.core.star.star_tools import StarTools
+from astrbot.core.utils.active_event_registry import active_event_registry
 
 from .core.config import clamp_duration, normalize_commands, parse_time_ranges
 from .core.group_card import GroupCardUpdater
@@ -301,6 +305,71 @@ class ShutupPlugin(Star):
         self._store.save()
         self._group_card.origin_to_event_map[origin] = event
         self._group_card.ensure_started()
+        self._stop_active_responses(event)
+
+    def _is_silenced(self, origin: str) -> bool:
+        """Return whether the origin should currently stay silent."""
+
+        if self.scheduled_enabled and self._is_in_scheduled_time():
+            wake_expiry = self.temp_wake_map.get(origin)
+            if self.sleep_mode_enabled and wake_expiry and time.time() < wake_expiry:
+                return False
+            return True
+
+        expiry = self._store.get(origin)
+        if expiry is None:
+            return False
+        if self._store.is_permanent(origin):
+            return True
+        return time.time() < expiry
+
+    def _mark_event_silenced(self, event: AstrMessageEvent) -> None:
+        """Mark an event so platform streaming senders can stop emitting chunks."""
+
+        event.set_extra("_shutup_silenced", True)
+
+    async def _filtered_stream(
+        self,
+        event: AstrMessageEvent,
+        stream: AsyncGenerator,
+    ) -> AsyncGenerator:
+        """Yield stream chunks until silence is requested for this event/session."""
+
+        async for chunk in stream:
+            if event.get_extra("_shutup_silenced") or self._is_silenced(
+                event.unified_msg_origin
+            ):
+                logger.info(
+                    "[Shutup] 已停止闭嘴期间的流式输出 | "
+                    f"来源: {event.unified_msg_origin}"
+                )
+                break
+            yield chunk
+
+    def _stop_active_responses(
+        self,
+        event: AstrMessageEvent,
+        *,
+        include_current: bool = False,
+    ) -> None:
+        """Stop active responses in the same session so silence takes effect now."""
+
+        exclude = None if include_current else event
+        stopped_count = active_event_registry.stop_all(
+            event.unified_msg_origin,
+            exclude=exclude,
+        )
+        self._mark_event_silenced(event)
+        if stopped_count > 0:
+            logger.info(f"[Shutup] 已停止当前会话中的 {stopped_count} 个进行中响应")
+
+    def _is_suppressible_model_result(self, result: MessageEventResult) -> bool:
+        """Return whether a prepared result comes from model execution."""
+
+        return result.is_model_result() or result.result_content_type in {
+            ResultContentType.STREAMING_RESULT,
+            ResultContentType.STREAMING_FINISH,
+        }
 
     async def _run_llm_shutup(
         self, event: AstrMessageEvent, duration: int, unit: str = "m"
@@ -381,6 +450,67 @@ class ShutupPlugin(Star):
         if result is not None:
             yield self._stopped_plain_result(event, result)
             event.stop_event()
+
+    @filter.on_llm_response(priority=10000)
+    async def stop_llm_response_when_silenced(
+        self,
+        event: AstrMessageEvent,
+        response: LLMResponse,
+    ) -> None:
+        """Suppress model responses that finish after silence has started."""
+
+        if not self._is_silenced(event.unified_msg_origin):
+            return
+
+        self._mark_event_silenced(event)
+        logger.info(
+            f"[Shutup] 已拦截闭嘴期间完成的 LLM 响应 | 来源: {event.unified_msg_origin}"
+        )
+        event.should_call_llm(False)
+        event.stop_event()
+
+    @filter.on_decorating_result(priority=10000)
+    async def suppress_model_result_when_silenced(
+        self,
+        event: AstrMessageEvent,
+    ) -> None:
+        """Drop model results that are already prepared during silence."""
+
+        if not self._is_silenced(event.unified_msg_origin):
+            return
+
+        result = event.get_result()
+        if result is None or not self._is_suppressible_model_result(result):
+            return
+
+        logger.info(
+            "[Shutup] 已丢弃闭嘴期间待发送的模型回复 | "
+            f"来源: {event.unified_msg_origin}"
+        )
+        event.clear_result()
+        event.should_call_llm(False)
+        event.stop_event()
+
+    @filter.on_decorating_result(priority=10001)
+    async def wrap_model_stream_when_not_silenced(
+        self,
+        event: AstrMessageEvent,
+    ) -> None:
+        """Wrap active model streams so future silence can cut them off."""
+
+        result = event.get_result()
+        if (
+            result is None
+            or result.result_content_type != ResultContentType.STREAMING_RESULT
+        ):
+            return
+        if result.async_stream is None:
+            return
+        if event.get_extra("_shutup_stream_wrapped"):
+            return
+
+        result.set_async_stream(self._filtered_stream(event, result.async_stream))
+        event.set_extra("_shutup_stream_wrapped", True)
 
     # ------------------------------------------------------------------ #
     #  Lifecycle
