@@ -12,27 +12,22 @@ from astrbot.api import logger
 # ------------------------------------------------------------------ #
 
 
-def parse_time_ranges(time_config: str | list[str]) -> list[tuple[str, str]]:
-    """Parse scheduled shutup time ranges from configuration text.
+def parse_time_ranges(time_config: list[str]) -> list[tuple[str, str]]:
+    """Parse scheduled shutup time ranges from configuration list.
 
     Each non-empty, non-comment item should match ``HH:MM-HH:MM``.
     Cross-midnight ranges (e.g. ``23:00-07:00``) are supported.
 
     Args:
-        time_config: List or multi-line text from ``scheduled_shutup_times`` config.
+        time_config: List from ``scheduled_shutup_times`` config.
 
     Returns:
         List of ``(start_time, end_time)`` string tuples.
     """
     time_ranges: list[tuple[str, str]] = []
 
-    if isinstance(time_config, str):
-        lines = time_config.strip().split("\n")
-    else:
-        lines = [str(item) for item in time_config]
-
-    for line in lines:
-        line = line.strip()
+    for item in time_config:
+        line = str(item).strip()
         if not line or line.startswith("#"):
             continue
 
@@ -57,23 +52,15 @@ def parse_time_ranges(time_config: str | list[str]) -> list[tuple[str, str]]:
 # ------------------------------------------------------------------ #
 
 
-def normalize_commands(
-    raw: str | list[str], fallback: list[str] | None = None
-) -> list[str]:
+def normalize_commands(raw: list[str], fallback: list[str] | None = None) -> list[str]:
     """Normalize a command list from config.
 
-    Strings are split on whitespace/commas. The original order is preserved:
-    the first item is used as the framework command name and the rest are
-    registered as aliases.
+    The original order is preserved: the first item is used as the framework
+    command name and the rest are registered as aliases.
     """
-    if isinstance(raw, str):
-        cmds = re.split(r"[\s,]+", raw)
-    else:
-        cmds = list(raw)
-
     normalized: list[str] = []
     seen: set[str] = set()
-    for cmd in cmds:
+    for cmd in raw:
         cmd = str(cmd).strip()
         if not cmd or cmd in seen:
             continue

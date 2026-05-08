@@ -24,24 +24,21 @@ class SilenceStore:
         self.load()
 
     def _normalize_entry(self, raw: Any) -> dict[str, Any] | None:
-        if isinstance(raw, dict):
-            expiry = raw.get("expiry")
-            if expiry is None:
-                return None
+        if not isinstance(raw, dict):
+            return None
 
-            entry = {
-                "expiry": float(expiry),
-            }
-            if "original_card" in raw:
-                entry["original_card"] = str(raw.get("original_card") or "")
-            if "original_nickname" in raw:
-                entry["original_nickname"] = str(raw.get("original_nickname") or "")
-            return entry
+        expiry = raw.get("expiry")
+        if expiry is None:
+            return None
 
-        if isinstance(raw, (int, float)):
-            return {"expiry": float(raw)}
-
-        return None
+        entry = {
+            "expiry": float(expiry),
+        }
+        if "original_card" in raw:
+            entry["original_card"] = str(raw.get("original_card") or "")
+        if "original_nickname" in raw:
+            entry["original_nickname"] = str(raw.get("original_nickname") or "")
+        return entry
 
     # -- persistence ------------------------------------------------------- #
 

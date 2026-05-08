@@ -40,28 +40,22 @@ class ShutupPlugin(Star):
 
         # -- Command config ---------------------------------------------- #
         self.shutup_cmds: list[str] = normalize_commands(
-            command_settings.get(
-                "shutup_commands", config.get("shutup_commands", ["闭嘴"])
-            ),
+            command_settings.get("shutup_commands", ["闭嘴"]),
             fallback=["闭嘴"],
         )
         self.unshutup_cmds: list[str] = normalize_commands(
-            command_settings.get(
-                "unshutup_commands", config.get("unshutup_commands", ["说话"])
-            ),
+            command_settings.get("unshutup_commands", ["说话"]),
             fallback=["说话"],
         )
         self.permanent_shutup_cmds: list[str] = normalize_commands(
             command_settings.get(
                 "permanent_shutup_commands",
-                config.get("permanent_shutup_commands", ["永久闭嘴"]),
+                ["永久闭嘴"],
             ),
             fallback=["永久闭嘴"],
         )
         self.temp_wake_cmds: list[str] = normalize_commands(
-            scheduled_settings.get(
-                "temp_wake_commands", config.get("temp_wake_commands", ["醒醒"])
-            ),
+            scheduled_settings.get("temp_wake_commands", ["醒醒"]),
             fallback=["醒醒"],
         )
         self._dedupe_configured_commands()
@@ -71,37 +65,33 @@ class ShutupPlugin(Star):
 
         # -- Duration settings ------------------------------------------- #
         self.default_duration: int = clamp_duration(
-            command_settings.get(
-                "default_duration", config.get("default_duration", 600)
-            )
+            command_settings.get("default_duration", 600)
         )
 
         # -- Reply templates --------------------------------------------- #
-        self.shutup_reply: str = command_settings.get(
-            "shutup_reply", config.get("shutup_reply", "好的，我闭嘴了~")
-        )
+        self.shutup_reply: str = command_settings.get("shutup_reply", "好的，我闭嘴了~")
         self.unshutup_reply: str = command_settings.get(
-            "unshutup_reply", config.get("unshutup_reply", "好的，我恢复说话了~")
+            "unshutup_reply", "好的，我恢复说话了~"
         )
 
         # -- Group card -------------------------------------------------- #
         self.group_card_enabled: bool = group_card_settings.get(
             "group_card_update_enabled",
-            config.get("group_card_update_enabled", False),
+            False,
         )
         self.group_card_template: str = group_card_settings.get(
             "group_card_template",
-            config.get("group_card_template", "[闭嘴中 {remaining}分钟]"),
+            "[闭嘴中 {remaining}分钟]",
         )
 
         # -- Scheduled shutup -------------------------------------------- #
         self.scheduled_enabled: bool = scheduled_settings.get(
             "scheduled_shutup_enabled",
-            config.get("scheduled_shutup_enabled", False),
+            False,
         )
-        self.scheduled_times_config: str | list[str] = scheduled_settings.get(
+        self.scheduled_times_config: list[str] = scheduled_settings.get(
             "scheduled_shutup_times",
-            config.get("scheduled_shutup_times", ["23:00-07:00"]),
+            ["23:00-07:00"],
         )
         self.scheduled_time_ranges: list[tuple[str, str]] = parse_time_ranges(
             self.scheduled_times_config
@@ -111,13 +101,11 @@ class ShutupPlugin(Star):
 
         # -- Sleep / wake ------------------------------------------------- #
         self.sleep_mode_enabled: bool = scheduled_settings.get(
-            "sleep_mode_enabled", config.get("sleep_mode_enabled", True)
+            "sleep_mode_enabled", True
         )
         self.temp_wake_map: dict[str, float] = {}
 
-        raw_temp_wake = scheduled_settings.get(
-            "temp_wake_duration", config.get("temp_wake_duration", 300)
-        )
+        raw_temp_wake = scheduled_settings.get("temp_wake_duration", 300)
         try:
             twd = int(raw_temp_wake)
         except (TypeError, ValueError):
@@ -134,28 +122,21 @@ class ShutupPlugin(Star):
         self.temp_wake_duration: int = twd
         self.temp_wake_reply: str = scheduled_settings.get(
             "temp_wake_reply",
-            config.get(
-                "temp_wake_reply", "我被叫醒了，还能陪你聊 {wake_minutes} 分钟哦。"
-            ),
+            "我被叫醒了，还能陪你聊 {wake_minutes} 分钟哦。",
         )
         self.sleep_prompt_reply: str = scheduled_settings.get(
             "sleep_prompt_reply",
-            config.get(
-                "sleep_prompt_reply", "我已经睡了，要临时叫醒我吗~（回复：{wake_word}）"
-            ),
+            "我已经睡了，要临时叫醒我吗~（回复：{wake_word}）",
         )
         self.temp_wake_llm_reply_enabled: bool = scheduled_settings.get(
             "temp_wake_llm_reply_enabled",
-            config.get("temp_wake_llm_reply_enabled", False),
+            False,
         )
         self.temp_wake_llm_prompt: str = scheduled_settings.get(
             "temp_wake_llm_prompt",
-            config.get(
-                "temp_wake_llm_prompt",
-                "用户刚刚在定时闭嘴期间用“{wake_command}”叫醒了你。"
-                "请用简短、自然、带一点刚睡醒感觉的中文回复用户，"
-                "告诉用户你会临时陪聊 {wake_minutes} 分钟。不要解释规则。",
-            ),
+            "用户刚刚在定时闭嘴期间用“{wake_command}”叫醒了你。"
+            "请用简短、自然、带一点刚睡醒感觉的中文回复用户，"
+            "告诉用户你会临时陪聊 {wake_minutes} 分钟。不要解释规则。",
         )
 
         # -- Persisted state ---------------------------------------------- #
@@ -263,7 +244,7 @@ class ShutupPlugin(Star):
         """Register the LLM tool only when enabled in plugin config."""
 
         self._unregister_llm_tools()
-        if not self.config.get("llm_tool_enabled", False):
+        if not self.config.get("llm_tool_enabled", True):
             logger.info("[Shutup] LLM 工具未启用，跳过注册")
             return
 
@@ -336,8 +317,10 @@ class ShutupPlugin(Star):
         """Yield stream chunks until silence is requested for this event/session."""
 
         async for chunk in stream:
-            if event.get_extra("_shutup_silenced") or self._is_silenced(
-                event.unified_msg_origin
+            if (
+                event.is_stopped()
+                or event.get_extra("_shutup_silenced")
+                or self._is_silenced(event.unified_msg_origin)
             ):
                 logger.info(
                     "[Shutup] 已停止闭嘴期间的流式输出 | "
@@ -349,15 +332,12 @@ class ShutupPlugin(Star):
     def _stop_active_responses(
         self,
         event: AstrMessageEvent,
-        *,
-        include_current: bool = False,
     ) -> None:
         """Stop active responses in the same session so silence takes effect now."""
 
-        exclude = None if include_current else event
         stopped_count = active_event_registry.stop_all(
             event.unified_msg_origin,
-            exclude=exclude,
+            exclude=event,
         )
         self._mark_event_silenced(event)
         if stopped_count > 0:
@@ -375,7 +355,7 @@ class ShutupPlugin(Star):
         self, event: AstrMessageEvent, duration: int, unit: str = "m"
     ) -> str:
         """Entry point for the LLM function tool."""
-        if not self.config.get("llm_tool_enabled", False):
+        if not self.config.get("llm_tool_enabled", True):
             return "LLM 工具未启用"
 
         time_units = {"s": 1, "m": 60, "h": 3600, "d": 86400}
@@ -467,7 +447,6 @@ class ShutupPlugin(Star):
             f"[Shutup] 已拦截闭嘴期间完成的 LLM 响应 | 来源: {event.unified_msg_origin}"
         )
         event.should_call_llm(False)
-        event.stop_event()
 
     @filter.on_decorating_result(priority=10000)
     async def suppress_model_result_when_silenced(
@@ -489,7 +468,6 @@ class ShutupPlugin(Star):
         )
         event.clear_result()
         event.should_call_llm(False)
-        event.stop_event()
 
     @filter.on_decorating_result(priority=10001)
     async def wrap_model_stream_when_not_silenced(

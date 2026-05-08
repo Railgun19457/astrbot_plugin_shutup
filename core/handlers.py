@@ -49,6 +49,7 @@ class MessageHandlers:
         if expiry is not None:
             if self._p._store.is_permanent(origin):
                 logger.info(f"[Shutup] 永久闭嘴中，消息已拦截 | 来源: {origin}")
+                self._p._stop_active_responses(event)
                 event.should_call_llm(False)
                 event.stop_event()
             elif time.time() < expiry:
@@ -56,6 +57,7 @@ class MessageHandlers:
                 logger.info(
                     f"[Shutup] 消息已拦截 | 来源: {origin} | 剩余: {remaining}s"
                 )
+                self._p._stop_active_responses(event)
                 event.should_call_llm(False)
                 event.stop_event()
             else:
