@@ -228,7 +228,6 @@ class MessageHandlers:
             self._p.temp_wake_reply,
             wake_minutes=wake_minutes,
             temporary_wake_duration=self._p.temp_wake_duration,
-            temp_wake_duration=self._p.temp_wake_duration,
             wake_command=wake_command,
         )
 
@@ -239,7 +238,6 @@ class MessageHandlers:
             self._p.temp_wake_llm_prompt,
             wake_minutes=wake_minutes,
             temporary_wake_duration=self._p.temp_wake_duration,
-            temp_wake_duration=self._p.temp_wake_duration,
             wake_command=wake_command,
             sender_name=event.get_sender_name(),
         )
@@ -284,7 +282,6 @@ class MessageHandlers:
                 wake_word=wake_word,
                 wake_command=wake_word,
                 temporary_wake_duration=self._p.temp_wake_duration,
-                temp_wake_duration=self._p.temp_wake_duration,
                 wake_minutes=self._p.temp_wake_duration // 60,
             )
 

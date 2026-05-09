@@ -36,13 +36,7 @@ class ShutupPlugin(Star):
 
         command_settings = config.get("command_settings", {})
         sleep_settings = config.get("sleep_settings", {})
-        legacy_scheduled_settings = config.get("scheduled_settings", {})
         group_card_settings = config.get("group_card_settings", {})
-
-        def get_sleep_setting(key: str, legacy_key: str, default: Any) -> Any:
-            if key in sleep_settings:
-                return sleep_settings.get(key, default)
-            return legacy_scheduled_settings.get(legacy_key, default)
 
         # -- Command config ---------------------------------------------- #
         self.shutup_cmds: list[str] = normalize_commands(
@@ -61,9 +55,7 @@ class ShutupPlugin(Star):
             fallback=["永久闭嘴"],
         )
         self.temp_wake_cmds: list[str] = normalize_commands(
-            get_sleep_setting(
-                "temporary_wake_commands", "temp_wake_commands", ["醒醒"]
-            ),
+            sleep_settings.get("temporary_wake_commands", ["醒醒"]),
             fallback=["醒醒"],
         )
         self._dedupe_configured_commands()
@@ -93,15 +85,9 @@ class ShutupPlugin(Star):
         )
 
         # -- Sleep schedule ---------------------------------------------- #
-        self.sleep_enabled: bool = get_sleep_setting(
-            "sleep_enabled",
-            "scheduled_shutup_enabled",
-            False,
-        )
-        self.sleep_time_config: list[str] = get_sleep_setting(
-            "sleep_time_ranges",
-            "scheduled_shutup_times",
-            ["23:00-07:00"],
+        self.sleep_enabled: bool = sleep_settings.get("sleep_enabled", False)
+        self.sleep_time_config: list[str] = sleep_settings.get(
+            "sleep_time_ranges", ["23:00-07:00"]
         )
         self.sleep_time_ranges: list[tuple[str, str]] = parse_time_ranges(
             self.sleep_time_config
@@ -110,18 +96,12 @@ class ShutupPlugin(Star):
             logger.warning("[Shutup] 未配置有效的睡眠时间段，定时睡眠将不会生效")
 
         # -- Sleep / wake ------------------------------------------------- #
-        self.sleep_interaction_enabled: bool = get_sleep_setting(
-            "sleep_interaction_enabled",
-            "sleep_mode_enabled",
-            True,
+        self.sleep_interaction_enabled: bool = sleep_settings.get(
+            "sleep_interaction_enabled", True
         )
         self.temp_wake_map: dict[str, float] = {}
 
-        raw_temp_wake = get_sleep_setting(
-            "temporary_wake_duration",
-            "temp_wake_duration",
-            300,
-        )
+        raw_temp_wake = sleep_settings.get("temporary_wake_duration", 300)
         try:
             twd = int(raw_temp_wake)
         except (TypeError, ValueError):
@@ -136,24 +116,20 @@ class ShutupPlugin(Star):
             )
             twd = 0
         self.temp_wake_duration: int = twd
-        self.temp_wake_reply: str = get_sleep_setting(
+        self.temp_wake_reply: str = sleep_settings.get(
             "temporary_wake_reply",
-            "temp_wake_reply",
             "我被叫醒了，还能陪你聊 {wake_minutes} 分钟哦。",
         )
-        self.sleep_prompt_reply: str = get_sleep_setting(
-            "sleep_prompt_reply",
+        self.sleep_prompt_reply: str = sleep_settings.get(
             "sleep_prompt_reply",
             "我已经睡了，要临时叫醒我吗~（回复：{wake_word}）",
         )
-        self.temp_wake_llm_reply_enabled: bool = get_sleep_setting(
+        self.temp_wake_llm_reply_enabled: bool = sleep_settings.get(
             "temporary_wake_llm_reply_enabled",
-            "temp_wake_llm_reply_enabled",
             False,
         )
-        self.temp_wake_llm_prompt: str = get_sleep_setting(
+        self.temp_wake_llm_prompt: str = sleep_settings.get(
             "temporary_wake_llm_prompt",
-            "temp_wake_llm_prompt",
             "用户刚刚在睡眠时段用“{wake_command}”叫醒了你。"
             "请用简短、自然、带一点刚睡醒感觉的中文回复用户，"
             "告诉用户你会临时陪聊 {wake_minutes} 分钟。不要解释规则。",
