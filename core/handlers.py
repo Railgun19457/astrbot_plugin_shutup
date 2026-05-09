@@ -36,10 +36,10 @@ class MessageHandlers:
         text = event.get_message_str().strip()
         origin = event.unified_msg_origin
 
-        if self._p._is_in_scheduled_time():
-            if self._p.sleep_mode_enabled:
+        if self._p._is_in_sleep_time():
+            if self._p.sleep_interaction_enabled:
                 return await self._handle_sleep_interaction(event, text, origin)
-            logger.info("[Shutup] 定时闭嘴生效中")
+            logger.info("[Shutup] 睡眠时段生效中")
             self._p._stop_active_responses(event)
             event.should_call_llm(False)
             event.stop_event()
@@ -113,8 +113,8 @@ class MessageHandlers:
         origin = event.unified_msg_origin
 
         is_sleep_early = (
-            self._p.sleep_mode_enabled
-            and self._p._is_in_scheduled_time()
+            self._p.sleep_interaction_enabled
+            and self._p._is_in_sleep_time()
             and origin in self._p.temp_wake_map
         )
         if is_sleep_early:
@@ -196,8 +196,8 @@ class MessageHandlers:
 
         origin = event.unified_msg_origin
 
-        if not (self._p.sleep_mode_enabled and self._p._is_in_scheduled_time()):
-            logger.info("[Shutup] 非定时闭嘴期间忽略临时唤醒指令并继续后续流程")
+        if not (self._p.sleep_interaction_enabled and self._p._is_in_sleep_time()):
+            logger.info("[Shutup] 非睡眠时段忽略临时唤醒指令并继续后续流程")
             event.continue_event()
             return None
 
@@ -214,7 +214,7 @@ class MessageHandlers:
             event.continue_event()
             return None
 
-        logger.info(f"[Shutup] 睡眠期间被临时唤醒，清醒 {wake_minutes} 分钟")
+        logger.info(f"[Shutup] 睡眠中被临时唤醒，清醒 {wake_minutes} 分钟")
         if self._p.temp_wake_llm_reply_enabled:
             llm_reply = await self._generate_temp_wake_reply(
                 event=event,
@@ -227,6 +227,7 @@ class MessageHandlers:
         return self._format_template(
             self._p.temp_wake_reply,
             wake_minutes=wake_minutes,
+            temporary_wake_duration=self._p.temp_wake_duration,
             temp_wake_duration=self._p.temp_wake_duration,
             wake_command=wake_command,
         )
@@ -237,6 +238,7 @@ class MessageHandlers:
         prompt = self._format_template(
             self._p.temp_wake_llm_prompt,
             wake_minutes=wake_minutes,
+            temporary_wake_duration=self._p.temp_wake_duration,
             temp_wake_duration=self._p.temp_wake_duration,
             wake_command=wake_command,
             sender_name=event.get_sender_name(),
@@ -268,11 +270,11 @@ class MessageHandlers:
         if wake_expiry is not None and time.time() < wake_expiry:
             self._p.temp_wake_map[origin] = time.time() + self._p.temp_wake_duration
             remaining = int(self._p.temp_wake_map[origin] - time.time())
-            logger.info(f"[Shutup] bot正处于临时清醒状态 | 剩余: {remaining}s")
+            logger.info(f"[Shutup] bot 当前处于临时清醒状态 | 剩余: {remaining}s")
             return None
 
         self._p.temp_wake_map.pop(origin, None)
-        logger.info("[Shutup] 定时闭嘴(睡眠)生效中")
+        logger.info("[Shutup] 睡眠时段生效中")
 
         if self._is_talking_to_bot(event, text):
             wake_word = self._p.temp_wake_cmds[0] if self._p.temp_wake_cmds else "醒醒"
@@ -281,6 +283,7 @@ class MessageHandlers:
                 self._p.sleep_prompt_reply,
                 wake_word=wake_word,
                 wake_command=wake_word,
+                temporary_wake_duration=self._p.temp_wake_duration,
                 temp_wake_duration=self._p.temp_wake_duration,
                 wake_minutes=self._p.temp_wake_duration // 60,
             )

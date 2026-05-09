@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
 
 class GroupCardUpdater:
-    """Updates the bot's group card to show remaining mute time.
+    """Updates the bot's group card to show remaining quiet time.
 
     Only functional on the **aiocqhttp** QQ platform.
     """

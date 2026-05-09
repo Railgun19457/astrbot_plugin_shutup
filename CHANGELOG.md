@@ -1,5 +1,9 @@
 ## 更新日志
 
+### v1.7.1
+- 将定时闭嘴相关配置、描述与日志统一调整为睡眠语义
+- 新增 `sleep_settings` 与 `temporary_wake_*` 配置键，并兼容旧配置读取
+
 ### v1.7.0
 - 新增 `shutup_suppress_reply` 主流程日志，明确记录已设置 suppress 标记
 - 将发送前兜底日志调整为 fallback 语义，便于区分主流程与兜底清理

@@ -13,13 +13,13 @@ from astrbot.api import logger
 
 
 def parse_time_ranges(time_config: list[str]) -> list[tuple[str, str]]:
-    """Parse scheduled shutup time ranges from configuration list.
+    """Parse sleep time ranges from configuration list.
 
     Each non-empty, non-comment item should match ``HH:MM-HH:MM``.
     Cross-midnight ranges (e.g. ``23:00-07:00``) are supported.
 
     Args:
-        time_config: List from ``scheduled_shutup_times`` config.
+        time_config: List from ``sleep_time_ranges`` config.
 
     Returns:
         List of ``(start_time, end_time)`` string tuples.

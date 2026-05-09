@@ -9,7 +9,7 @@
   "require_admin": {
     "type": "bool",
     "description": "需要管理员权限",
-    "hint": "开启后，只有 bot 管理员才能使用闭嘴、永久闭嘴、说话、醒醒等指令",
+    "hint": "开启后，只有 bot 管理员才能使用闭嘴、永久闭嘴、说话、醒醒等相关指令",
     "default": false
   },
   "priority": {
@@ -62,65 +62,65 @@
       }
     }
   },
-  "scheduled_settings": {
+  "sleep_settings": {
     "type": "object",
-    "description": "定时闭嘴设置",
+    "description": "定时睡眠设置",
     "items": {
-      "scheduled_shutup_enabled": {
+      "sleep_enabled": {
         "type": "bool",
-        "description": "启用定时闭嘴",
-        "hint": "开启后，bot 会在指定时间段内自动保持沉默",
+        "description": "启用定时睡眠",
+        "hint": "开启后，bot 会在指定时间段内自动进入睡眠状态",
         "default": false
       },
-      "scheduled_shutup_times": {
+      "sleep_time_ranges": {
         "type": "list",
-        "description": "定时闭嘴时间段",
+        "description": "睡眠时间段",
         "hint": "每项一个时间段，格式: HH:MM-HH:MM (24 小时制)。例如 23:00-07:00、12:00-14:00。支持跨天时间段",
         "items": { "type": "string" },
         "default": ["23:00-07:00"]
       },
-      "sleep_mode_enabled": {
+      "sleep_interaction_enabled": {
         "type": "bool",
         "description": "启用临时唤醒互动",
-        "hint": "开启后，可以在定时闭嘴期间临时解除",
+        "hint": "开启后，可以在睡眠时段内临时叫醒 bot",
         "default": true
       },
-      "temp_wake_commands": {
+      "temporary_wake_commands": {
         "type": "list",
         "description": "临时唤醒指令列表",
-        "hint": "仅在定时闭嘴且睡眠互动启用期间生效。触发后机器人会临时恢复回复一段时间",
+        "hint": "仅在定时睡眠且睡眠互动启用期间生效。触发后机器人会临时恢复回复一段时间",
         "items": { "type": "string" },
         "default": ["醒醒"]
       },
-      "temp_wake_duration": {
+      "temporary_wake_duration": {
         "type": "int",
         "description": "临时唤醒保持时长(秒)",
-        "hint": "睡眠模式下，bot 被叫醒后保持清醒的空闲时长。临时唤醒期间每收到一条新消息都会刷新倒计时；持续该时长没有新消息后重新进入闭嘴状态。默认 300 秒 (5 分钟)，推荐填写 60 的倍数",
+        "hint": "睡眠状态下，bot 被叫醒后保持清醒的空闲时长。临时唤醒期间每收到一条新消息都会刷新倒计时；持续该时长没有新消息后重新进入睡眠状态。默认 300 秒 (5 分钟)，推荐填写 60 的倍数",
         "default": 300
       },
       "sleep_prompt_reply": {
         "type": "string",
-        "description": "定时闭嘴中被呼叫时的提示文本",
-        "hint": "支持占位符 {wake_word}/{wake_command}(临时唤醒指令)、{wake_minutes}(临时唤醒分钟数)、{temp_wake_duration}(临时唤醒秒数)",
+        "description": "睡眠中被呼叫时的提示文本",
+        "hint": "支持占位符 {wake_word}/{wake_command}(临时唤醒指令)、{wake_minutes}(临时唤醒分钟数)、{temporary_wake_duration}(临时唤醒秒数)",
         "default": "[自动回复]我已经睡了，要叫醒我吗~（回复：{wake_word}）"
       },
-      "temp_wake_reply": {
+      "temporary_wake_reply": {
         "type": "string",
         "description": "临时唤醒成功回复",
-        "hint": "支持占位符 {wake_minutes}(临时唤醒分钟数)、{temp_wake_duration}(临时唤醒秒数)、{wake_command}(临时唤醒指令)。启用 LLM 生成后，仅在生成失败时作为兜底回复",
+        "hint": "支持占位符 {wake_minutes}(临时唤醒分钟数)、{temporary_wake_duration}(临时唤醒秒数)、{wake_command}(临时唤醒指令)。启用 LLM 生成后，仅在生成失败时作为兜底回复",
         "default": "我被叫醒了，还能陪你聊 {wake_minutes} 分钟哦。"
       },
-      "temp_wake_llm_reply_enabled": {
+      "temporary_wake_llm_reply_enabled": {
         "type": "bool",
         "description": "使用 LLM 生成临时唤醒回复",
         "hint": "开启后，首次临时唤醒成功时会调用当前会话使用的 LLM 生成回复；失败时使用上面的临时唤醒成功回复作为兜底",
         "default": false
       },
-      "temp_wake_llm_prompt": {
+      "temporary_wake_llm_prompt": {
         "type": "text",
         "description": "临时唤醒 LLM 提示词",
-        "hint": "支持占位符 {wake_command}(临时唤醒指令)、{wake_minutes}(临时唤醒分钟数)、{temp_wake_duration}(临时唤醒秒数)、{sender_name}(发送者昵称)",
-        "default": "用户刚刚在定时闭嘴期间用“{wake_command}”叫醒了你。请用简短、自然、带一点刚睡醒感觉的中文回复用户，告诉用户你会临时陪聊 {wake_minutes} 分钟。不要解释规则。"
+        "hint": "支持占位符 {wake_command}(临时唤醒指令)、{wake_minutes}(临时唤醒分钟数)、{temporary_wake_duration}(临时唤醒秒数)、{sender_name}(发送者昵称)",
+        "default": "用户刚刚在睡眠时段用“{wake_command}”叫醒了你。请用简短、自然、带一点刚睡醒感觉的中文回复用户，告诉用户你会临时陪聊 {wake_minutes} 分钟。不要解释规则。"
       }
     }
   },
@@ -131,7 +131,7 @@
       "group_card_update_enabled": {
         "type": "bool",
         "description": "启用群昵称剩余时长显示",
-        "hint": "开启后，bot 在闭嘴期间会修改群昵称显示剩余时长，每分钟更新一次",
+        "hint": "开启后，bot 在闭嘴或睡眠期间会修改群昵称显示剩余时长，每分钟更新一次",
         "default": false
       },
       "group_card_template": {
