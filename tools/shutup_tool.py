@@ -33,7 +33,7 @@ class ShutupTool(FunctionTool[None]):
             "properties": {
                 "duration": {
                     "type": "number",
-                    "description": "闭嘴时长数值，由 LLM 根据用户意图自主决定合适的时长，最长不超过 60 分钟",
+                    "description": "闭嘴时长数值，由 LLM 根据用户意图自主决定合适的时长，最长不超过插件配置的最大闭嘴时长",
                 },
                 "unit": {
                     "type": "string",
@@ -57,7 +57,7 @@ class ShutupTool(FunctionTool[None]):
 
 
 @pydantic_dataclass
-class ShutupSuppressTool(FunctionTool[None]):
+class NotReplyTool(FunctionTool[None]):
     """LLM 工具：请求不对当前触发消息产生回复。
 
     使用场景：当 LLM 决定不对唤醒它的那条消息进行回复时，调用此工具。
@@ -65,8 +65,8 @@ class ShutupSuppressTool(FunctionTool[None]):
 
     plugin: Any = Field(default=None, repr=False, exclude=True)
 
-    name: str = "shutup_suppress_reply"
-    description: str = "当你决定不回复当前这条消息时调用"
+    name: str = "not_reply"
+    description: str = "当你决定不回复当前这条消息时调用；适用于用户要求不要回复或当前消息无需回应的场景"
     parameters: dict = Field(
         default_factory=lambda: {
             "type": "object",
@@ -79,9 +79,9 @@ class ShutupSuppressTool(FunctionTool[None]):
             return "LLM 工具未就绪"
 
         try:
-            event.set_extra("_shutup_suppress_this", True)
+            event.set_extra("_shutup_not_reply_this", True)
             logger.info(
-                "[Shutup] LLM 请求本条消息静默处理，已设置 suppress 标记 | 来源: %s",
+                "[Shutup] LLM 请求本条消息不回复，已设置 not_reply 标记 | 来源: %s",
                 event.unified_msg_origin,
             )
             return None
@@ -90,7 +90,13 @@ class ShutupSuppressTool(FunctionTool[None]):
 
 
 def build_llm_tools(plugin) -> list[FunctionTool[None]]:
-    tools = [ShutupTool(plugin=plugin), ShutupSuppressTool(plugin=plugin)]
+    tools = [ShutupTool(plugin=plugin), NotReplyTool(plugin=plugin)]
     for t in tools:
         t.plugin = plugin
+        if isinstance(t, ShutupTool):
+            max_duration = getattr(plugin, "shutup_tool_max_duration", MAX_DURATION)
+            t.parameters["properties"]["duration"]["description"] = (
+                "闭嘴时长数值，由 LLM 根据用户意图自主决定合适的时长，"
+                f"最长不超过 {max_duration} 秒"
+            )
     return tools

@@ -8,7 +8,7 @@
 - 支持普通闭嘴、永久闭嘴、定时睡眠三种模式
 - 支持自定义指令与别名
 - 支持睡眠互动：睡眠时段内可提示用户并临时叫醒 bot
-- 支持 LLM 主动调用闭嘴工具
+- 支持 LLM 主动调用闭嘴或不回复工具
 - 支持通过群昵称展示闭嘴 / 睡眠剩余时间
 - 支持持久化禁言状态，重启后不会丢失
 - 支持持久化 bot 原始群名片 / QQ 昵称，闭嘴结束后更可靠地恢复原名
@@ -42,7 +42,7 @@
 
 ### 基础配置
 
-- `llm_tool_enabled`：是否启用 LLM 工具调用
+- `llm_tool_options`：选择向 LLM 暴露的函数工具
 - `require_admin`：是否仅允许管理员使用闭嘴相关指令
 - `priority`：插件优先级，默认 `10000`
 
@@ -56,6 +56,7 @@
 - `unshutup_commands`：解除闭嘴指令列表
 - `permanent_shutup_commands`：永久闭嘴指令列表
 - `default_duration`：默认闭嘴时长，单位秒，范围 `0-86400`
+- `shutup_tool_max_duration`：LLM `shutup` 工具最大闭嘴时长，单位秒，范围 `1-86400`，默认 `3600`
 - `shutup_reply`：闭嘴成功回复
   - 支持占位符：`{duration}`、`{expiry_time}`
 - `unshutup_reply`：解除闭嘴回复
@@ -111,15 +112,15 @@
 
 ## LLM 工具调用
 
-启用 `llm_tool_enabled` 后，LLM 可以主动调用闭嘴功能：
+在 `llm_tool_options` 中启用对应工具后，LLM 可以主动调用闭嘴或不回复功能：
 
 - **shutup**：让机器人在当前会话中停止回复消息
   - 参数：
     - `duration`：时长数值
     - `unit`：时间单位，支持 `s` / `m` / `h` / `d`
-  - 实际最大生效时长为 `3600` 秒（60 分钟）
-  - 超过上限会自动截断到 60 分钟
-- **shutup_suppress_reply**：本条消息静默处理
+  - 实际最大生效时长由 `shutup_tool_max_duration` 控制，默认 `3600` 秒（60 分钟）
+  - 超过上限会自动截断到配置的最大值
+- **not_reply**：本条消息静默处理
   - 适用场景：
     - 用户明确要求“这条不用回”
     - 模型判断此时最合适的行为就是不回复
@@ -133,6 +134,7 @@
 - “机器人安静一会儿” → LLM 调用 `shutup`
 - “闭嘴 10 分钟” → LLM 调用 `shutup(10, "m")`
 - “你先别说话了” → LLM 调用 `shutup`
+- “这条不用回” → LLM 调用 `not_reply`
 
 ## 持久化说明
 
@@ -154,4 +156,4 @@
 - 群昵称显示功能目前仅对 **aiocqhttp / OneBot QQ** 链路有效
 - 若未配置有效的 `sleep_time_ranges`，定时睡眠不会生效
 - `group_card_template` 占位符写错时，插件会回退到默认展示格式
-- LLM 工具调用的闭嘴时长虽然支持多种单位，但最终最大只会生效 60 分钟
+- LLM 工具调用的闭嘴时长虽然支持多种单位，但最终最大只会生效 `shutup_tool_max_duration` 配置的时长

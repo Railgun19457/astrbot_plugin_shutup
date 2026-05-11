@@ -1,6 +1,6 @@
 name: astrbot_plugin_shutup
 display_name: 闭嘴
 desc: 让Bot闭嘴,支持指令调用和函数调用，支持定时睡眠与临时唤醒，支持通过群昵称显示闭嘴状态
-version: v1.7.1
+version: v1.7.2
 author: Railgun19457
 repo: https://github.com/railgun19457/astrbot_plugin_shutup

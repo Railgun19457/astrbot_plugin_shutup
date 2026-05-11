@@ -65,7 +65,14 @@ class ShutupPlugin(Star):
 
         # -- Duration settings ------------------------------------------- #
         self.default_duration: int = clamp_duration(
-            command_settings.get("default_duration", 600)
+            command_settings.get("default_duration", 600),
+            field_name="default_duration",
+        )
+        self.shutup_tool_max_duration: int = clamp_duration(
+            command_settings.get("shutup_tool_max_duration", 3600),
+            default=3600,
+            min_val=1,
+            field_name="shutup_tool_max_duration",
         )
 
         # -- Reply templates --------------------------------------------- #
@@ -152,8 +159,12 @@ class ShutupPlugin(Star):
 
         self.LLM_TOOL_NAME_BY_OPTION = {
             "shutup": "shutup",
-            "suppress_reply": "shutup_suppress_reply",
+            "not_reply": "not_reply",
         }
+        self.LEGACY_LLM_TOOL_NAME_BY_OPTION = {
+            "suppress_reply": "not_reply",
+        }
+        self.LEGACY_LLM_TOOL_NAMES = {"shutup_suppress_reply"}
 
         self._register_llm_tools()
 
@@ -168,6 +179,7 @@ class ShutupPlugin(Star):
             f" 闭嘴={self.shutup_cmds} 永久闭嘴={self.permanent_shutup_cmds}"
             f" 醒醒={self.temp_wake_cmds}"
             f" | 默认时长: {self.default_duration}s"
+            f" | 工具最大时长: {self.shutup_tool_max_duration}s"
             f" | 优先级: {self.plugin_priority}{time_info}"
         )
         if self.group_card_enabled:
@@ -238,7 +250,9 @@ class ShutupPlugin(Star):
         """Remove this plugin's LLM tool from AstrBot's tool list."""
 
         tool_mgr = self.context.get_llm_tool_manager()
-        tool_names = set(self.LLM_TOOL_NAME_BY_OPTION.values())
+        tool_names = (
+            set(self.LLM_TOOL_NAME_BY_OPTION.values()) | self.LEGACY_LLM_TOOL_NAMES
+        )
         tool_mgr.func_list = [
             tool
             for tool in tool_mgr.func_list
@@ -257,10 +271,14 @@ class ShutupPlugin(Star):
             logger.info("[Shutup] LLM 工具未启用或未选择，跳过注册")
             return
 
+        tool_name_by_option = {
+            **self.LEGACY_LLM_TOOL_NAME_BY_OPTION,
+            **self.LLM_TOOL_NAME_BY_OPTION,
+        }
         enabled_tool_names = {
-            self.LLM_TOOL_NAME_BY_OPTION[key]
+            tool_name_by_option[key]
             for key in self.llm_tool_options
-            if key in self.LLM_TOOL_NAME_BY_OPTION
+            if key in tool_name_by_option
         }
 
         tools = [t for t in build_llm_tools(self) if t.name in enabled_tool_names]
@@ -369,7 +387,7 @@ class ShutupPlugin(Star):
         if stopped_count > 0:
             logger.info(f"[Shutup] 已停止当前会话中的 {stopped_count} 个进行中响应")
 
-    def _is_suppressible_model_result(self, result: MessageEventResult) -> bool:
+    def _is_droppable_model_result(self, result: MessageEventResult) -> bool:
         """Return whether a prepared result comes from model execution."""
 
         return result.is_model_result() or result.result_content_type in {
@@ -385,11 +403,15 @@ class ShutupPlugin(Star):
             return "LLM 工具未启用"
 
         time_units = {"s": 1, "m": 60, "h": 3600, "d": 86400}
-        duration_seconds = duration * time_units.get(unit, 60)
+        duration_seconds = int(duration * time_units.get(str(unit).lower(), 60))
 
-        if duration_seconds > 3600:
-            duration_seconds = 3600
-            logger.warning("[Shutup] LLM 请求的时长超过限制，已调整为最大值 3600s")
+        if duration_seconds > self.shutup_tool_max_duration:
+            duration_seconds = self.shutup_tool_max_duration
+            logger.warning(
+                "[Shutup] LLM 请求的时长超过限制，"
+                f"已调整为最大值 {self.shutup_tool_max_duration}s"
+            )
+        duration_seconds = max(0, duration_seconds)
 
         origin = event.unified_msg_origin
         self._apply_silence(origin, duration_seconds, event)
@@ -463,7 +485,7 @@ class ShutupPlugin(Star):
         event: AstrMessageEvent,
         response: LLMResponse,
     ) -> None:
-        """Suppress model responses that finish after silence has started."""
+        """Drop model responses that finish after silence has started."""
 
         if not self._is_silenced(event.unified_msg_origin):
             return
@@ -475,7 +497,7 @@ class ShutupPlugin(Star):
         event.should_call_llm(False)
 
     @filter.on_decorating_result(priority=10000)
-    async def suppress_model_result_when_silenced(
+    async def drop_model_result_when_silenced(
         self,
         event: AstrMessageEvent,
     ) -> None:
@@ -485,7 +507,7 @@ class ShutupPlugin(Star):
             return
 
         result = event.get_result()
-        if result is None or not self._is_suppressible_model_result(result):
+        if result is None or not self._is_droppable_model_result(result):
             return
 
         logger.info(
@@ -496,10 +518,10 @@ class ShutupPlugin(Star):
         event.should_call_llm(False)
 
     @filter.on_decorating_result(priority=10002)
-    async def suppress_tool_requested_no_reply(self, event: AstrMessageEvent) -> None:
-        """Fallback: drop any prepared result when LLM requested silent handling."""
+    async def drop_tool_requested_no_reply(self, event: AstrMessageEvent) -> None:
+        """Fallback: drop any prepared result when LLM requested no reply."""
 
-        if not event.get_extra("_shutup_suppress_this"):
+        if not event.get_extra("_shutup_not_reply_this"):
             return
 
         result = event.get_result()
@@ -507,7 +529,7 @@ class ShutupPlugin(Star):
             return
 
         logger.info(
-            "[Shutup] 检测到 suppress 标记，兜底丢弃待发送结果 | 来源: %s",
+            "[Shutup] 检测到 not_reply 标记，兜底丢弃待发送结果 | 来源: %s",
             event.unified_msg_origin,
         )
         event.clear_result()

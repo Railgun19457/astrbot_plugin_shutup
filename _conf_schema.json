@@ -2,9 +2,9 @@
   "llm_tool_options": {
     "type": "list",
     "description": "函数工具选项",
-    "hint": "选择向 LLM 暴露的函数工具：shutup(禁言)、suppress_reply(不回复本条消息)。未勾选项不会暴露。",
-    "options": ["shutup", "suppress_reply"],
-    "default": ["shutup", "suppress_reply"]
+    "hint": "选择向 LLM 暴露的函数工具：shutup(禁言)、not_reply(不回复本条消息)。未勾选项不会暴露。",
+    "options": ["shutup", "not_reply"],
+    "default": ["shutup", "not_reply"]
   },
   "require_admin": {
     "type": "bool",
@@ -47,6 +47,12 @@
         "description": "默认闭嘴时长(秒)",
         "hint": "范围 0-86400 秒",
         "default": 600
+      },
+      "shutup_tool_max_duration": {
+        "type": "int",
+        "description": "shutup 工具最大闭嘴时长(秒)",
+        "hint": "LLM 调用 shutup 工具时允许的最大闭嘴时长。范围 1-86400 秒，超过后会自动截断",
+        "default": 3600
       },
       "shutup_reply": {
         "type": "string",

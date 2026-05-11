@@ -82,6 +82,7 @@ def clamp_duration(
     default: int = 600,
     min_val: int = 0,
     max_val: int = 86400,
+    field_name: str = "duration",
 ) -> int:
     """Validate and clamp a duration value.
 
@@ -93,14 +94,14 @@ def clamp_duration(
         default: Fallback duration in seconds.
         min_val: Minimum allowed value.
         max_val: Maximum allowed value (24 h).
+        field_name: Config field name used in warning logs.
 
     Returns:
         Clamped duration in seconds.
     """
     if not isinstance(value, (int, float)) or not (min_val <= value <= max_val):
         logger.warning(
-            f"[Shutup] default_duration ({value}) is invalid, "
-            f"falling back to {default}s"
+            f"[Shutup] {field_name} ({value}) is invalid, falling back to {default}s"
         )
         return default
     return int(value)

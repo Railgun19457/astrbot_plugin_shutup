@@ -1,5 +1,11 @@
 ## 更新日志
 
+### v1.7.2
+- 将本条消息不回复工具重命名为 `not_reply`，便于 LLM 更直接理解调用意图
+- 同步更新 LLM 工具配置项、文档与本地提示中的工具名称
+- 新增 `shutup_tool_max_duration` 配置项，用于控制 LLM `shutup` 工具最大闭嘴时长
+- LLM `shutup` 工具参数说明会根据配置提示当前最大闭嘴时长
+
 ### v1.7.1
 - 将定时闭嘴相关配置、描述与日志统一调整为睡眠语义
 - 新增 `sleep_settings` 与 `temporary_wake_*` 配置键
