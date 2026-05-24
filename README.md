@@ -88,12 +88,21 @@
 群昵称显示相关配置。
 
 - `group_card_update_enabled`：是否启用群昵称剩余时长显示
-- `group_card_template`：群昵称模板
+- `group_card_template`：闭嘴状态群昵称模板
+- `sleep_group_card_template`：睡眠状态群昵称模板
+- `temporary_wake_group_card_template`：临时唤醒状态群昵称模板
   - 支持占位符：
-    - `{remaining}`：剩余分钟数，或 `永久`
+    - `{remaining}`：剩余分钟数；闭嘴状态下也可能为 `永久`
     - `{original_card}`：原始群名片
     - `{original_nickname}`：原始 QQ 昵称
     - `{original_name}`：优先使用原始群名片，否则使用原始 QQ 昵称
+    - `{status}`：当前状态标识，可为 `muted`、`sleep`、`temporary_wake`
+
+模板选择规则：
+
+- 普通闭嘴 / 永久闭嘴：使用 `group_card_template`
+- 定时睡眠中：使用 `sleep_group_card_template`
+- 睡眠时段内临时唤醒：使用 `temporary_wake_group_card_template`
 
 ## 睡眠模式说明
 
@@ -155,5 +164,5 @@
 - 闭嘴状态以当前会话为单位，不是全局静音
 - 群昵称显示功能目前仅对 **aiocqhttp / OneBot QQ** 链路有效
 - 若未配置有效的 `sleep_time_ranges`，定时睡眠不会生效
-- `group_card_template` 占位符写错时，插件会回退到默认展示格式
+- 群昵称模板占位符写错时，插件会按当前状态回退到默认展示格式
 - LLM 工具调用的闭嘴时长虽然支持多种单位，但最终最大只会生效 `shutup_tool_max_duration` 配置的时长

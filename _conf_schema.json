@@ -142,9 +142,21 @@
       },
       "group_card_template": {
         "type": "string",
-        "description": "群昵称显示模板",
-        "hint": "支持占位符:\n {remaining} - 剩余分钟数或永久\n {original_card} - 原始群昵称(群名片)\n {original_nickname} - 原始 QQ 昵称\n {original_name} - 原始名称(优先使用群昵称，若无则使用 QQ 昵称)",
+        "description": "闭嘴状态群昵称显示模板",
+        "hint": "普通闭嘴和永久闭嘴状态使用。支持占位符:\n {remaining} - 剩余分钟数或永久\n {original_card} - 原始群昵称(群名片)\n {original_nickname} - 原始 QQ 昵称\n {original_name} - 原始名称(优先使用群昵称，若无则使用 QQ 昵称)\n {status} - 当前状态标识",
         "default": "{original_name}[闭嘴中 {remaining} 分钟]"
+      },
+      "sleep_group_card_template": {
+        "type": "string",
+        "description": "睡眠状态群昵称显示模板",
+        "hint": "定时睡眠生效且未临时唤醒时使用。支持占位符:\n {remaining} - 距离睡眠结束的剩余分钟数\n {original_card} - 原始群昵称(群名片)\n {original_nickname} - 原始 QQ 昵称\n {original_name} - 原始名称(优先使用群昵称，若无则使用 QQ 昵称)\n {status} - 当前状态标识",
+        "default": "{original_name}[睡眠中 {remaining} 分钟]"
+      },
+      "temporary_wake_group_card_template": {
+        "type": "string",
+        "description": "临时唤醒状态群昵称显示模板",
+        "hint": "睡眠时段内被临时唤醒时使用。支持占位符:\n {remaining} - 临时唤醒剩余分钟数\n {original_card} - 原始群昵称(群名片)\n {original_nickname} - 原始 QQ 昵称\n {original_name} - 原始名称(优先使用群昵称，若无则使用 QQ 昵称)\n {status} - 当前状态标识",
+        "default": "{original_name}[临时唤醒 {remaining} 分钟]"
       }
     }
   }

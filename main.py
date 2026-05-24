@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import AsyncGenerator
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from astrbot.api import AstrBotConfig, logger
@@ -89,6 +89,14 @@ class ShutupPlugin(Star):
         self.group_card_template: str = group_card_settings.get(
             "group_card_template",
             "[闭嘴中 {remaining}分钟]",
+        )
+        self.sleep_group_card_template: str = group_card_settings.get(
+            "sleep_group_card_template",
+            "{original_name}[睡眠中 {remaining} 分钟]",
+        )
+        self.temp_wake_group_card_template: str = group_card_settings.get(
+            "temporary_wake_group_card_template",
+            "{original_name}[临时唤醒 {remaining} 分钟]",
         )
 
         # -- Sleep schedule ---------------------------------------------- #
@@ -183,7 +191,12 @@ class ShutupPlugin(Star):
             f" | 优先级: {self.plugin_priority}{time_info}"
         )
         if self.group_card_enabled:
-            logger.info(f"[Shutup] 群昵称更新已启用 | 模板: {self.group_card_template}")
+            logger.info(
+                "[Shutup] 群昵称更新已启用 | "
+                f"闭嘴模板: {self.group_card_template} | "
+                f"睡眠模板: {self.sleep_group_card_template} | "
+                f"临时唤醒模板: {self.temp_wake_group_card_template}"
+            )
 
     def _apply_configured_commands(self) -> None:
         """Apply configured command names to AstrBot framework command filters."""
@@ -237,15 +250,6 @@ class ShutupPlugin(Star):
         event.should_call_llm(False)
         return event.plain_result(text)
 
-    def _stopped_optional_result(
-        self, event: AstrMessageEvent, text: str | None
-    ) -> MessageEventResult | None:
-        """Build a stopped text result, or stop silently when text is empty."""
-
-        if text is None:
-            return None
-        return self._stopped_plain_result(event, text)
-
     def _unregister_llm_tools(self) -> None:
         """Remove this plugin's LLM tool from AstrBot's tool list."""
 
@@ -296,10 +300,14 @@ class ShutupPlugin(Star):
     # ------------------------------------------------------------------ #
 
     def _is_in_sleep_time(self) -> bool:
-        if not self.sleep_enabled or not self.sleep_time_ranges:
-            return False
+        return self._get_sleep_remaining_seconds() is not None
 
-        current_minutes = datetime.now().hour * 60 + datetime.now().minute
+    def _get_sleep_remaining_seconds(self) -> int | None:
+        if not self.sleep_enabled or not self.sleep_time_ranges:
+            return None
+
+        now = datetime.now()
+        current_minutes = now.hour * 60 + now.minute
         for start_s, end_s in self.sleep_time_ranges:
             sh, sm = map(int, start_s.split(":"))
             eh, em = map(int, end_s.split(":"))
@@ -311,8 +319,80 @@ class ShutupPlugin(Star):
             else:
                 in_range = current_minutes >= start_m or current_minutes <= end_m
             if in_range:
-                return True
-        return False
+                if start_m <= end_m or current_minutes <= end_m:
+                    end_time = now.replace(
+                        hour=eh,
+                        minute=em,
+                        second=59,
+                        microsecond=999999,
+                    )
+                else:
+                    end_time = (now + timedelta(days=1)).replace(
+                        hour=eh,
+                        minute=em,
+                        second=59,
+                        microsecond=999999,
+                    )
+                return max(0, int((end_time - now).total_seconds()))
+        return None
+
+    @staticmethod
+    def _seconds_to_display_minutes(seconds: float) -> int:
+        return max(1, int((max(0, seconds) + 59) // 60))
+
+    def _get_group_card_state(self, origin: str) -> tuple[str, int | None] | None:
+        """Return the current group-card status and remaining minutes."""
+
+        now = time.time()
+        sleep_remaining_seconds = self._get_sleep_remaining_seconds()
+        if sleep_remaining_seconds is not None:
+            wake_expiry = self.temp_wake_map.get(origin)
+            if self.sleep_interaction_enabled and wake_expiry is not None:
+                if now < wake_expiry:
+                    return (
+                        "temporary_wake",
+                        self._seconds_to_display_minutes(wake_expiry - now),
+                    )
+                self.temp_wake_map.pop(origin, None)
+
+            return (
+                "sleep",
+                self._seconds_to_display_minutes(sleep_remaining_seconds),
+            )
+
+        expiry = self._store.get(origin)
+        if expiry is None:
+            return None
+        if self._store.is_permanent(origin):
+            return "muted", None
+
+        remaining_seconds = expiry - now
+        if remaining_seconds > 0:
+            return "muted", self._seconds_to_display_minutes(remaining_seconds)
+        return None
+
+    async def _sync_group_card_state(
+        self,
+        event: AstrMessageEvent,
+        origin: str,
+    ) -> None:
+        """Update group card with the template matching the current status."""
+
+        if not self.group_card_enabled:
+            return
+
+        group_card_state = self._get_group_card_state(origin)
+        if group_card_state is None:
+            await self._group_card.update(event, origin, 0)
+            return
+
+        status, remaining_minutes = group_card_state
+        await self._group_card.update(
+            event,
+            origin,
+            remaining_minutes,
+            status=status,
+        )
 
     # ------------------------------------------------------------------ #
     #  Silence helpers (called by handlers + LLM tool)
@@ -324,8 +404,6 @@ class ShutupPlugin(Star):
         """Record a new silence entry and persist it."""
         self._store.set(origin, time.time() + duration)
         self._store.save()
-        self._group_card.origin_to_event_map[origin] = event
-        self._group_card.ensure_started()
         self._stop_active_responses(event)
 
     def _is_silenced(self, origin: str) -> bool:
@@ -417,8 +495,7 @@ class ShutupPlugin(Star):
         self._apply_silence(origin, duration_seconds, event)
 
         if self.group_card_enabled:
-            remaining_minutes = max(1, int(duration_seconds / 60))
-            await self._group_card.update(event, origin, remaining_minutes)
+            await self._sync_group_card_state(event, origin)
 
         expiry_time = time.strftime(
             "%Y-%m-%d %H:%M:%S",

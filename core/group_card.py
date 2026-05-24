@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from astrbot.api import logger
 
@@ -11,6 +11,8 @@ if TYPE_CHECKING:
     from astrbot.api.event import AstrMessageEvent
 
     from ..main import ShutupPlugin
+
+GroupCardStatus = Literal["muted", "sleep", "temporary_wake"]
 
 
 class GroupCardUpdater:
@@ -22,6 +24,7 @@ class GroupCardUpdater:
     def __init__(self, plugin: ShutupPlugin) -> None:
         self._plugin = plugin
         self.origin_to_event_map: dict[str, AstrMessageEvent] = {}
+        self._original_identity_cache: dict[str, tuple[str, str]] = {}
         self._task: asyncio.Task | None = None
         self._started: bool = False
 
@@ -44,7 +47,10 @@ class GroupCardUpdater:
     async def restore_all(self) -> None:
         if not self._plugin.group_card_enabled:
             return
-        for origin in self._plugin._store.active_origins:
+        origins = set(self._plugin._store.active_origins) | set(
+            self.origin_to_event_map
+        )
+        for origin in origins:
             event = self.origin_to_event_map.get(origin)
             if event is not None:
                 await self.update(event, origin, 0)
@@ -56,35 +62,32 @@ class GroupCardUpdater:
             while True:
                 await asyncio.sleep(60)
 
-                if not self._plugin._store:
-                    continue
-
-                import time
-
-                now = time.time()
                 changed = False
-                for origin in self._plugin._store.active_origins:
-                    expiry = self._plugin._store.get(origin)
-                    if expiry is None:
-                        continue
+                origins = set(self._plugin._store.active_origins) | set(
+                    self.origin_to_event_map
+                )
+                for origin in list(origins):
                     event = self.origin_to_event_map.get(origin)
+                    group_card_state = self._plugin._get_group_card_state(origin)
 
-                    if self._plugin._store.is_permanent(origin):
+                    if group_card_state is not None:
                         if event is not None:
-                            await self.update(event, origin, None)
+                            status, remaining_minutes = group_card_state
+                            await self.update(
+                                event,
+                                origin,
+                                remaining_minutes,
+                                status=status,
+                            )
                         continue
 
-                    remaining_seconds = expiry - now
-
-                    if remaining_seconds > 0:
-                        if event is not None:
-                            remaining_minutes = max(1, int(remaining_seconds / 60))
-                            await self.update(event, origin, remaining_minutes)
-                    else:
-                        if event is not None:
-                            await self.update(event, origin, 0)
+                    if origin in self._plugin._store:
                         self._plugin._store.remove(origin)
                         changed = True
+
+                    if event is not None:
+                        await self.update(event, origin, 0)
+                    else:
                         self.origin_to_event_map.pop(origin, None)
 
                 if changed:
@@ -98,39 +101,46 @@ class GroupCardUpdater:
     # -- card update ------------------------------------------------------ #
 
     async def update(
-        self, event: AstrMessageEvent, origin: str, remaining_minutes: int | None
+        self,
+        event: AstrMessageEvent,
+        origin: str,
+        remaining_minutes: int | None,
+        status: GroupCardStatus = "muted",
     ) -> None:
         if not self._plugin.group_card_enabled:
             return
 
-        try:
-            from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_message_event import (  # noqa: E501
-                AiocqhttpMessageEvent,
-            )
-        except ImportError:
-            logger.debug("[Shutup] aiocqhttp 模块未安装，跳过群昵称更新")
-            return
-
-        if not isinstance(event, AiocqhttpMessageEvent):
-            return
-
-        group_id = event.get_group_id()
-        if not group_id:
-            return
-
-        bot = getattr(event, "bot", None)
-        if not bot or not hasattr(bot, "call_action"):
-            logger.debug("[Shutup] bot 不支持 call_action，跳过群昵称更新")
-            return
-
-        self_id = event.get_self_id()
-        if not self_id:
-            return
+        is_active_status = remaining_minutes is None or remaining_minutes > 0
+        if is_active_status:
+            self.origin_to_event_map[origin] = event
+            self.ensure_started()
 
         try:
-            original_card, original_nick = self._plugin._store.get_original_identity(
-                origin
-            )
+            try:
+                from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_message_event import (  # noqa: E501
+                    AiocqhttpMessageEvent,
+                )
+            except ImportError:
+                logger.debug("[Shutup] aiocqhttp 模块未安装，跳过群昵称更新")
+                return
+
+            if not isinstance(event, AiocqhttpMessageEvent):
+                return
+
+            group_id = event.get_group_id()
+            if not group_id:
+                return
+
+            bot = getattr(event, "bot", None)
+            if not bot or not hasattr(bot, "call_action"):
+                logger.debug("[Shutup] bot 不支持 call_action，跳过群昵称更新")
+                return
+
+            self_id = event.get_self_id()
+            if not self_id:
+                return
+
+            original_card, original_nick = self._get_original_identity(origin)
 
             if not original_card and not original_nick:
                 try:
@@ -142,12 +152,18 @@ class GroupCardUpdater:
                     )
                     original_card = member_info.get("card", "") or ""
                     original_nick = member_info.get("nickname", "") or ""
-                    self._plugin._store.set_original_identity(
-                        origin,
-                        original_card=original_card,
-                        original_nickname=original_nick,
-                    )
-                    self._plugin._store.save()
+                    if self._plugin._store.get(origin) is None:
+                        self._original_identity_cache[origin] = (
+                            original_card,
+                            original_nick,
+                        )
+                    else:
+                        self._plugin._store.set_original_identity(
+                            origin,
+                            original_card=original_card,
+                            original_nickname=original_nick,
+                        )
+                        self._plugin._store.save()
                     logger.debug(
                         f"[Shutup] 保存原始信息 | "
                         f"群昵称: {original_card} | "
@@ -158,22 +174,23 @@ class GroupCardUpdater:
                     original_card = ""
                     original_nick = ""
 
-            if remaining_minutes is None or remaining_minutes > 0:
+            if is_active_status:
                 original_name = original_card if original_card else original_nick
                 remaining_display = (
                     "永久" if remaining_minutes is None else remaining_minutes
                 )
 
                 try:
-                    card = self._plugin.group_card_template.format(
+                    card = self._get_template(status).format(
                         remaining=remaining_display,
                         original_card=original_card,
                         original_nickname=original_nick,
                         original_name=original_name,
+                        status=status,
                     )
                 except KeyError as e:
                     logger.warning(f"[Shutup] 群昵称模板占位符错误: {e}，使用默认格式")
-                    card = f"[闭嘴中 {remaining_display}]"
+                    card = self._get_fallback_card(status, remaining_display)
             else:
                 card = original_card
 
@@ -183,7 +200,35 @@ class GroupCardUpdater:
                 user_id=int(self_id),
                 card=card[:60],
             )
-            logger.info(f"[Shutup] 已更新群昵称: {card[:60]}")
+            logger.info(f"[Shutup] 已更新群昵称({status}): {card[:60]}")
 
         except Exception as e:
             logger.warning(f"[Shutup] 更新群昵称失败: {e}")
+        finally:
+            if not is_active_status:
+                self.origin_to_event_map.pop(origin, None)
+                self._original_identity_cache.pop(origin, None)
+
+    def _get_original_identity(self, origin: str) -> tuple[str, str]:
+        original_card, original_nick = self._plugin._store.get_original_identity(origin)
+        if original_card or original_nick:
+            return original_card, original_nick
+        return self._original_identity_cache.get(origin, ("", ""))
+
+    def _get_template(self, status: GroupCardStatus) -> str:
+        if status == "sleep":
+            return self._plugin.sleep_group_card_template
+        if status == "temporary_wake":
+            return self._plugin.temp_wake_group_card_template
+        return self._plugin.group_card_template
+
+    def _get_fallback_card(
+        self,
+        status: GroupCardStatus,
+        remaining_display: str | int,
+    ) -> str:
+        if status == "sleep":
+            return f"[睡眠中 {remaining_display}]"
+        if status == "temporary_wake":
+            return f"[临时唤醒 {remaining_display}]"
+        return f"[闭嘴中 {remaining_display}]"

@@ -119,17 +119,6 @@ class SilenceStore:
         """Return whether *origin* is permanently silenced."""
         return self.get(origin) == PERMANENT_EXPIRY
 
-    def clean_expired(self, now: float) -> None:
-        """Remove all entries whose expiry has passed."""
-        expired = [
-            origin
-            for origin, entry in self._entries.items()
-            if entry.get("expiry") != PERMANENT_EXPIRY
-            and float(entry.get("expiry", now + 1)) <= now
-        ]
-        for origin in expired:
-            self._entries.pop(origin, None)
-
     @property
     def active_origins(self) -> list[str]:
         """Return a snapshot of currently active origin keys."""

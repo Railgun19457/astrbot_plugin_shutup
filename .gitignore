@@ -1,3 +1,6 @@
 __pycache__/
 .vscode/
 AGENTS.md
+.ruff_cache/
+tools/__pycache__/
+core/__pycache__/

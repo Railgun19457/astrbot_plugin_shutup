@@ -40,6 +40,8 @@ class MessageHandlers:
             if self._p.sleep_interaction_enabled:
                 return await self._handle_sleep_interaction(event, text, origin)
             logger.info("[Shutup] 睡眠时段生效中")
+            if self._p.group_card_enabled:
+                await self._p._sync_group_card_state(event, origin)
             self._p._stop_active_responses(event)
             event.should_call_llm(False)
             event.stop_event()
@@ -125,8 +127,7 @@ class MessageHandlers:
         self._p._apply_silence(origin, duration, event)
 
         if self._p.group_card_enabled:
-            remaining_minutes = max(1, int(duration / 60))
-            await self._p._group_card.update(event, origin, remaining_minutes)
+            await self._p._sync_group_card_state(event, origin)
 
         expiry_time = time.strftime(
             "%Y-%m-%d %H:%M:%S",
@@ -144,12 +145,10 @@ class MessageHandlers:
         self._p.temp_wake_map.pop(origin, None)
         self._p._store.set_permanent(origin)
         self._p._store.save()
-        self._p._group_card.origin_to_event_map[origin] = event
-        self._p._group_card.ensure_started()
         self._p._stop_active_responses(event)
 
         if self._p.group_card_enabled:
-            await self._p._group_card.update(event, origin, None)
+            await self._p._sync_group_card_state(event, origin)
 
         logger.info(f"[Shutup] 已永久闭嘴 | 来源: {origin}")
         return "好的，我会一直闭嘴，直到你让我说话。"
@@ -208,6 +207,9 @@ class MessageHandlers:
         self._p.temp_wake_map[origin] = now + self._p.temp_wake_duration
         wake_minutes = self._p.temp_wake_duration // 60
         wake_command = self._p.temp_wake_cmds[0] if self._p.temp_wake_cmds else "醒醒"
+
+        if self._p.group_card_enabled:
+            await self._p._sync_group_card_state(event, origin)
 
         if was_already_awake:
             logger.info("[Shutup] 已处于临时唤醒状态，忽略临时唤醒指令并继续后续流程")
@@ -269,10 +271,15 @@ class MessageHandlers:
             self._p.temp_wake_map[origin] = time.time() + self._p.temp_wake_duration
             remaining = int(self._p.temp_wake_map[origin] - time.time())
             logger.info(f"[Shutup] bot 当前处于临时清醒状态 | 剩余: {remaining}s")
+            if self._p.group_card_enabled:
+                await self._p._sync_group_card_state(event, origin)
             return None
 
         self._p.temp_wake_map.pop(origin, None)
         logger.info("[Shutup] 睡眠时段生效中")
+
+        if self._p.group_card_enabled:
+            await self._p._sync_group_card_state(event, origin)
 
         if self._is_talking_to_bot(event, text):
             wake_word = self._p.temp_wake_cmds[0] if self._p.temp_wake_cmds else "醒醒"
