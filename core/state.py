@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +35,9 @@ class SilenceStore:
         entry = {
             "expiry": float(expiry),
         }
+        started_at = raw.get("started_at")
+        if isinstance(started_at, (int, float)):
+            entry["started_at"] = float(started_at)
         if "original_card" in raw:
             entry["original_card"] = str(raw.get("original_card") or "")
         if "original_nickname" in raw:
@@ -73,12 +77,14 @@ class SilenceStore:
         """Set an expiry timestamp for *origin*."""
         entry = self._entries.get(origin, {})
         entry["expiry"] = expiry
+        entry["started_at"] = time.time()
         self._entries[origin] = entry
 
     def set_permanent(self, origin: str) -> None:
         """Set a permanent silence entry for *origin*."""
         entry = self._entries.get(origin, {})
         entry["expiry"] = PERMANENT_EXPIRY
+        entry["started_at"] = time.time()
         self._entries[origin] = entry
 
     def set_original_identity(
@@ -105,6 +111,15 @@ class SilenceStore:
             return None
         expiry = entry.get("expiry")
         return float(expiry) if expiry is not None else None
+
+    def get_started_at(self, origin: str) -> float | None:
+        """Return the silence start timestamp for *origin*, or ``None``."""
+
+        entry = self._entries.get(origin)
+        if entry is None:
+            return None
+        started_at = entry.get("started_at")
+        return float(started_at) if isinstance(started_at, (int, float)) else None
 
     def get_original_identity(self, origin: str) -> tuple[str, str]:
         """Return persisted original ``(card, nickname)`` for *origin*."""

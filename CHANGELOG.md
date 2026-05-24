@@ -1,5 +1,15 @@
 ## 更新日志
 
+### v1.7.4
+- 新增闭嘴、永久闭嘴、说话指令的可选 LLM 回复生成
+- 新增 `shutup_llm_reply_enabled`、`permanent_shutup_llm_reply_enabled`、`unshutup_llm_reply_enabled` 开关
+- 新增三类指令回复 LLM 提示词配置
+- LLM 生成失败或返回空文本时自动回退到原固定回复
+- LLM 提示词配置为非字符串或包含未知占位符时自动回退到原固定回复
+- 新闭嘴记录会保存开始时间，用于解除闭嘴时更准确地注入已闭嘴时长
+- 将闭嘴、永久闭嘴、说话指令配置拆分为三个独立小组
+- 优化三类指令 LLM 默认提示词，并精简可用占位符
+
 ### v1.7.3
 - 新增睡眠状态群昵称模板 `sleep_group_card_template`
 - 新增临时唤醒状态群昵称模板 `temporary_wake_group_card_template`

@@ -21,50 +21,113 @@
   "command_settings": {
     "type": "object",
     "description": "闭嘴/说话指令设置",
-    "hint": "指令列表首项作为 AstrBot 框架主指令，其余项作为别名",
+    "hint": "三个指令组分别配置。指令列表首项作为 AstrBot 框架主指令，其余项作为别名",
     "items": {
-      "unshutup_commands": {
-        "type": "list",
-        "description": "说话指令列表",
-        "items": { "type": "string" },
-        "default": ["说话"]
+      "shutup_settings": {
+        "type": "object",
+        "description": "闭嘴指令设置",
+        "hint": "普通闭嘴指令、闭嘴时长、闭嘴回复与闭嘴 LLM 回复配置",
+        "items": {
+          "shutup_commands": {
+            "type": "list",
+            "description": "闭嘴指令列表",
+            "items": { "type": "string" },
+            "default": ["闭嘴"]
+          },
+          "default_duration": {
+            "type": "int",
+            "description": "默认闭嘴时长(秒)",
+            "hint": "范围 0-86400 秒",
+            "default": 600
+          },
+          "shutup_tool_max_duration": {
+            "type": "int",
+            "description": "shutup 工具最大闭嘴时长(秒)",
+            "hint": "LLM 调用 shutup 工具时允许的最大闭嘴时长。范围 1-86400 秒，超过后会自动截断",
+            "default": 3600
+          },
+          "shutup_reply": {
+            "type": "string",
+            "description": "闭嘴时的回复消息",
+            "hint": "支持占位符 {duration}(禁言时长，秒) 和 {expiry_time}(禁言结束时间)。启用 LLM 生成后，仅在生成失败时作为兜底回复",
+            "default": "好的，我闭嘴了~"
+          },
+          "shutup_llm_reply_enabled": {
+            "type": "bool",
+            "description": "使用 LLM 生成闭嘴回复",
+            "hint": "开启后，闭嘴指令成功时会调用当前会话使用的 LLM 生成回复；失败时使用 shutup_reply 作为兜底",
+            "default": false
+          },
+          "shutup_llm_prompt": {
+            "type": "text",
+            "description": "闭嘴回复 LLM 提示词",
+            "hint": "支持占位符 {sender_name}/{user_name}、{duration}、{default_reply}",
+            "default": "生成一句简短自然的中文回复，表示你将按要求暂时闭嘴。语气可以轻松一点，但不要嘲讽或冒犯用户。闭嘴时长：{duration} 秒。默认回复：{default_reply}。只输出回复文本，不要解释。"
+          }
+        }
       },
-      "shutup_commands": {
-        "type": "list",
-        "description": "闭嘴指令列表",
-        "items": { "type": "string" },
-        "default": ["闭嘴"]
+      "permanent_shutup_settings": {
+        "type": "object",
+        "description": "永久闭嘴指令设置",
+        "hint": "永久闭嘴指令、永久闭嘴回复与永久闭嘴 LLM 回复配置",
+        "items": {
+          "permanent_shutup_commands": {
+            "type": "list",
+            "description": "永久闭嘴指令列表",
+            "hint": "触发后机器人会一直闭嘴，直到使用说话指令解除",
+            "items": { "type": "string" },
+            "default": ["永久闭嘴"]
+          },
+          "permanent_shutup_reply": {
+            "type": "string",
+            "description": "永久闭嘴时的回复消息",
+            "hint": "启用 LLM 生成后，仅在生成失败时作为兜底回复",
+            "default": "好的，我会一直闭嘴，直到你让我说话。"
+          },
+          "permanent_shutup_llm_reply_enabled": {
+            "type": "bool",
+            "description": "使用 LLM 生成永久闭嘴回复",
+            "hint": "开启后，永久闭嘴指令成功时会调用当前会话使用的 LLM 生成回复；失败时使用 permanent_shutup_reply 作为兜底",
+            "default": false
+          },
+          "permanent_shutup_llm_prompt": {
+            "type": "text",
+            "description": "永久闭嘴回复 LLM 提示词",
+            "hint": "支持占位符 {sender_name}/{user_name}、{default_reply}",
+            "default": "生成一句简短自然的中文回复，表示你会保持安静，直到用户允许你说话。语气可以轻松一点，但不要嘲讽或冒犯用户。默认回复：{default_reply}。只输出回复文本，不要解释。"
+          }
+        }
       },
-      "permanent_shutup_commands": {
-        "type": "list",
-        "description": "永久闭嘴指令列表",
-        "hint": "触发后机器人会一直闭嘴，直到使用说话指令解除",
-        "items": { "type": "string" },
-        "default": ["永久闭嘴"]
-      },
-      "default_duration": {
-        "type": "int",
-        "description": "默认闭嘴时长(秒)",
-        "hint": "范围 0-86400 秒",
-        "default": 600
-      },
-      "shutup_tool_max_duration": {
-        "type": "int",
-        "description": "shutup 工具最大闭嘴时长(秒)",
-        "hint": "LLM 调用 shutup 工具时允许的最大闭嘴时长。范围 1-86400 秒，超过后会自动截断",
-        "default": 3600
-      },
-      "shutup_reply": {
-        "type": "string",
-        "description": "闭嘴时的回复消息",
-        "hint": "支持占位符 {duration}(禁言时长，秒) 和 {expiry_time}(禁言结束时间)",
-        "default": "好的，我闭嘴了~"
-      },
-      "unshutup_reply": {
-        "type": "string",
-        "description": "解除闭嘴时的回复消息",
-        "hint": "支持占位符 {duration}(禁言时长，秒) 和 {expiry_time}(禁言结束时间)",
-        "default": "好的，我恢复说话了~"
+      "unshutup_settings": {
+        "type": "object",
+        "description": "说话指令设置",
+        "hint": "说话/解除闭嘴指令、说话回复与说话 LLM 回复配置",
+        "items": {
+          "unshutup_commands": {
+            "type": "list",
+            "description": "说话指令列表",
+            "items": { "type": "string" },
+            "default": ["说话"]
+          },
+          "unshutup_reply": {
+            "type": "string",
+            "description": "解除闭嘴时的回复消息",
+            "hint": "支持占位符 {duration}(禁言时长，秒) 和 {expiry_time}(禁言结束时间)。启用 LLM 生成后，仅在生成失败时作为兜底回复",
+            "default": "好的，我恢复说话了~"
+          },
+          "unshutup_llm_reply_enabled": {
+            "type": "bool",
+            "description": "使用 LLM 生成解除闭嘴回复",
+            "hint": "开启后，说话/解除闭嘴指令成功时会调用当前会话使用的 LLM 生成回复；失败时使用 unshutup_reply 作为兜底",
+            "default": false
+          },
+          "unshutup_llm_prompt": {
+            "type": "text",
+            "description": "解除闭嘴回复 LLM 提示词",
+            "hint": "支持占位符 {sender_name}/{user_name}、{duration}、{default_reply}",
+            "default": "生成一句简短自然的中文回复，表示你已恢复说话。语气友好轻松。已安静约 {duration} 秒。默认回复：{default_reply}。只输出回复文本，不要解释。"
+          }
+        }
       }
     }
   },

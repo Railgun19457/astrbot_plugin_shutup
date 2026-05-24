@@ -8,6 +8,7 @@
 - 支持普通闭嘴、永久闭嘴、定时睡眠三种模式
 - 支持自定义指令与别名
 - 支持睡眠互动：睡眠时段内可提示用户并临时叫醒 bot
+- 支持使用 LLM 动态生成闭嘴 / 永久闭嘴 / 说话指令回复
 - 支持 LLM 主动调用闭嘴或不回复工具
 - 支持通过群昵称展示闭嘴 / 睡眠剩余时间
 - 支持持久化禁言状态，重启后不会丢失
@@ -48,19 +49,51 @@
 
 ### `command_settings`
 
-闭嘴 / 解除闭嘴指令配置。
+闭嘴 / 永久闭嘴 / 说话指令配置。三个指令分别放在独立小组中，方便按指令维护配置。
+
+#### `command_settings.shutup_settings`
+
+闭嘴指令相关配置。
 
 - `shutup_commands`：闭嘴指令列表
   - 首项会注册为框架主指令
   - 其余项会注册为别名
-- `unshutup_commands`：解除闭嘴指令列表
-- `permanent_shutup_commands`：永久闭嘴指令列表
 - `default_duration`：默认闭嘴时长，单位秒，范围 `0-86400`
 - `shutup_tool_max_duration`：LLM `shutup` 工具最大闭嘴时长，单位秒，范围 `1-86400`，默认 `3600`
 - `shutup_reply`：闭嘴成功回复
   - 支持占位符：`{duration}`、`{expiry_time}`
+  - 启用 LLM 生成后，仅在生成失败时作为兜底回复
+- `shutup_llm_reply_enabled`：是否使用 LLM 生成闭嘴回复，默认关闭
+- `shutup_llm_prompt`：闭嘴回复 LLM 提示词
+
+#### `command_settings.permanent_shutup_settings`
+
+永久闭嘴指令相关配置。
+
+- `permanent_shutup_commands`：永久闭嘴指令列表
+- `permanent_shutup_reply`：永久闭嘴成功回复
+  - 启用 LLM 生成后，仅在生成失败时作为兜底回复
+- `permanent_shutup_llm_reply_enabled`：是否使用 LLM 生成永久闭嘴回复，默认关闭
+- `permanent_shutup_llm_prompt`：永久闭嘴回复 LLM 提示词
+
+#### `command_settings.unshutup_settings`
+
+说话 / 解除闭嘴指令相关配置。
+
+- `unshutup_commands`：说话指令列表
 - `unshutup_reply`：解除闭嘴回复
   - 支持占位符：`{duration}`、`{expiry_time}`
+  - 启用 LLM 生成后，仅在生成失败时作为兜底回复
+- `unshutup_llm_reply_enabled`：是否使用 LLM 生成解除闭嘴回复，默认关闭
+- `unshutup_llm_prompt`：解除闭嘴回复 LLM 提示词
+
+LLM 指令回复提示词支持以下占位符：
+
+- `{sender_name}` / `{user_name}`：触发用户昵称
+- `{duration}`：时长，单位秒
+- `{default_reply}`：当前固定回复文本
+
+LLM 生成失败、未配置提示词、提示词占位符无效或生成空文本时，会自动回退到对应固定回复，不影响指令正常使用。
 
 ### `sleep_settings`
 

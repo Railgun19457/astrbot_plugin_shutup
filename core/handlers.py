@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import re
 import time
+from string import Formatter
 from typing import TYPE_CHECKING
 
 import astrbot.api.message_components as Comp
 from astrbot.api import logger
+
+from .config import TIME_UNITS
 
 if TYPE_CHECKING:
     from astrbot.api.event import AstrMessageEvent
@@ -17,8 +20,6 @@ if TYPE_CHECKING:
 
 class MessageHandlers:
     """All message-handling logic for the ShutupPlugin."""
-
-    TIME_UNITS: dict[str, int] = {"s": 1, "m": 60, "h": 3600, "d": 86400}
 
     def __init__(self, plugin: ShutupPlugin) -> None:
         self._p = plugin
@@ -80,7 +81,7 @@ class MessageHandlers:
         if match:
             val = int(match.group(1))
             unit = match.group(2) or "s"
-            return val * self.TIME_UNITS.get(unit, 1)
+            return val * TIME_UNITS.get(unit, 1)
         return self._p.default_duration
 
     # ------------------------------------------------------------------ #
@@ -99,8 +100,70 @@ class MessageHandlers:
         try:
             return template.format(**kwargs)
         except KeyError as e:
-            logger.warning(f"[Shutup] 临时唤醒模板占位符错误: {e}")
+            logger.warning(f"[Shutup] 回复模板占位符错误: {e}")
             return template
+
+    def _format_llm_prompt(self, template: str, **kwargs: object) -> str | None:
+        if not isinstance(template, str) or not template.strip():
+            return None
+
+        allowed_fields = set(kwargs)
+        try:
+            for _, field_name, _, _ in Formatter().parse(template):
+                if field_name is None:
+                    continue
+                root_name = field_name.split(".", 1)[0].split("[", 1)[0]
+                if root_name and root_name not in allowed_fields:
+                    logger.warning(f"[Shutup] LLM 提示词包含未知占位符: {field_name}")
+                    return None
+            return template.format(**kwargs)
+        except (KeyError, IndexError, ValueError) as e:
+            logger.warning(f"[Shutup] LLM 提示词格式化失败: {e}")
+            return None
+
+    async def _generate_llm_reply(
+        self, event: AstrMessageEvent, prompt: str, error_context: str
+    ) -> str | None:
+        try:
+            provider_id = await self._p.context.get_current_chat_provider_id(
+                event.unified_msg_origin
+            )
+            response = await self._p.context.llm_generate(
+                chat_provider_id=provider_id,
+                prompt=prompt,
+                contexts=[],
+            )
+            reply = (response.completion_text or "").strip()
+            if reply:
+                return reply
+        except Exception as e:
+            logger.warning(f"[Shutup] {error_context}，使用模板回复: {e}")
+        return None
+
+    async def _generate_command_reply(
+        self,
+        event: AstrMessageEvent,
+        prompt_template: str,
+        default_reply: str,
+        command_type: str,
+        duration: int = 0,
+    ) -> str | None:
+        sender_name = event.get_sender_name()
+        prompt_vars = dict(
+            sender_name=sender_name,
+            user_name=sender_name,
+            duration=duration,
+            default_reply=default_reply,
+        )
+        prompt = self._format_llm_prompt(prompt_template, **prompt_vars)
+        if prompt is None:
+            return None
+
+        return await self._generate_llm_reply(
+            event,
+            prompt,
+            error_context=f"生成{command_type}回复失败",
+        )
 
     # ------------------------------------------------------------------ #
     #  Shutup / unshutup
@@ -135,7 +198,23 @@ class MessageHandlers:
         )
         logger.info(f"[Shutup] 已禁言 | 时长: {duration}s | 到期: {expiry_time}")
 
-        return self._p.shutup_reply.format(duration=duration, expiry_time=expiry_time)
+        default_reply = self._format_template(
+            self._p.shutup_reply,
+            duration=duration,
+            expiry_time=expiry_time,
+        )
+        if self._p.shutup_llm_reply_enabled:
+            llm_reply = await self._generate_command_reply(
+                event=event,
+                prompt_template=self._p.shutup_llm_prompt,
+                default_reply=default_reply,
+                command_type="闭嘴",
+                duration=duration,
+            )
+            if llm_reply:
+                return llm_reply
+
+        return default_reply
 
     async def handle_permanent_shutup_command(self, event: AstrMessageEvent) -> str:
         if self._p.require_admin and not self._check_admin(event):
@@ -151,7 +230,18 @@ class MessageHandlers:
             await self._p._sync_group_card_state(event, origin)
 
         logger.info(f"[Shutup] 已永久闭嘴 | 来源: {origin}")
-        return "好的，我会一直闭嘴，直到你让我说话。"
+        default_reply = self._format_template(self._p.permanent_shutup_reply)
+        if self._p.permanent_shutup_llm_reply_enabled:
+            llm_reply = await self._generate_command_reply(
+                event=event,
+                prompt_template=self._p.permanent_shutup_llm_prompt,
+                default_reply=default_reply,
+                command_type="永久闭嘴",
+            )
+            if llm_reply:
+                return llm_reply
+
+        return default_reply
 
     async def handle_unshutup_command(self, event: AstrMessageEvent) -> str | None:
         if self._p.require_admin and not self._check_admin(event):
@@ -162,7 +252,11 @@ class MessageHandlers:
         old_expiry = self._p._store.get(origin)
         if old_expiry is not None and not self._p._store.is_permanent(origin):
             now = time.time()
-            duration = int(max(0, now - (old_expiry - self._p.default_duration)))
+            started_at = self._p._store.get_started_at(origin)
+            if started_at is not None:
+                duration = int(max(0, now - started_at))
+            else:
+                duration = int(max(0, now - (old_expiry - self._p.default_duration)))
         else:
             duration = 0
 
@@ -183,11 +277,23 @@ class MessageHandlers:
         self._p._store.save()
 
         logger.info(f"[Shutup] 已解除禁言 | 已禁言: {duration}s")
-        if was_already_awake:
-            return self._p.unshutup_reply.format(
-                duration=duration, expiry_time="已解除"
+        default_reply = self._format_template(
+            self._p.unshutup_reply,
+            duration=duration,
+            expiry_time="已解除",
+        )
+        if self._p.unshutup_llm_reply_enabled:
+            llm_reply = await self._generate_command_reply(
+                event=event,
+                prompt_template=self._p.unshutup_llm_prompt,
+                default_reply=default_reply,
+                command_type="说话",
+                duration=duration,
             )
-        return self._p.unshutup_reply.format(duration=duration, expiry_time="已解除")
+            if llm_reply:
+                return llm_reply
+
+        return default_reply
 
     async def handle_temp_wake_command(self, event: AstrMessageEvent) -> str | None:
         if self._p.require_admin and not self._check_admin(event):
@@ -236,28 +342,20 @@ class MessageHandlers:
     async def _generate_temp_wake_reply(
         self, event: AstrMessageEvent, wake_minutes: int, wake_command: str
     ) -> str | None:
-        prompt = self._format_template(
+        prompt = self._format_llm_prompt(
             self._p.temp_wake_llm_prompt,
             wake_minutes=wake_minutes,
             temporary_wake_duration=self._p.temp_wake_duration,
             wake_command=wake_command,
             sender_name=event.get_sender_name(),
         )
-        try:
-            provider_id = await self._p.context.get_current_chat_provider_id(
-                event.unified_msg_origin
-            )
-            response = await self._p.context.llm_generate(
-                chat_provider_id=provider_id,
-                prompt=prompt,
-                contexts=[],
-            )
-            reply = (response.completion_text or "").strip()
-            if reply:
-                return reply
-        except Exception as e:
-            logger.warning(f"[Shutup] 生成临时唤醒回复失败，使用模板回复: {e}")
-        return None
+        if prompt is None:
+            return None
+        return await self._generate_llm_reply(
+            event,
+            prompt,
+            error_context="生成临时唤醒回复失败",
+        )
 
     # ------------------------------------------------------------------ #
     #  Sleep interaction

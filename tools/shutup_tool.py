@@ -17,7 +17,6 @@ from astrbot.core.agent.tool import FunctionTool
 if TYPE_CHECKING:
     from astrbot.api.event import AstrMessageEvent
 
-TIME_UNITS: dict[str, int] = {"s": 1, "m": 60, "h": 3600, "d": 86400}
 MAX_DURATION: int = 3600
 
 

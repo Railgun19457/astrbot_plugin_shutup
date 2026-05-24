@@ -17,7 +17,12 @@ from astrbot.core.star.star_handler import star_handlers_registry
 from astrbot.core.star.star_tools import StarTools
 from astrbot.core.utils.active_event_registry import active_event_registry
 
-from .core.config import clamp_duration, normalize_commands, parse_time_ranges
+from .core.config import (
+    TIME_UNITS,
+    clamp_duration,
+    normalize_commands,
+    parse_time_ranges,
+)
 from .core.group_card import GroupCardUpdater
 from .core.handlers import MessageHandlers
 from .core.state import SilenceStore
@@ -27,6 +32,11 @@ from .tools.shutup_tool import build_llm_tools
 class ShutupPlugin(Star):
     """让 bot 闭嘴 — 支持指令、定时睡眠、LLM 工具调用、群昵称显示。"""
 
+    LLM_TOOL_NAME_BY_OPTION = {
+        "shutup": "shutup",
+        "not_reply": "not_reply",
+    }
+
     def __init__(self, context: Context, config: AstrBotConfig) -> None:
         super().__init__(context)
         self.config = config
@@ -35,23 +45,31 @@ class ShutupPlugin(Star):
         self.plugin_priority: int = config.get("priority", 10000)
 
         command_settings = config.get("command_settings", {})
+        if not isinstance(command_settings, dict):
+            command_settings = {}
+        shutup_settings = self._get_object_config(command_settings, "shutup_settings")
+        permanent_shutup_settings = self._get_object_config(
+            command_settings,
+            "permanent_shutup_settings",
+        )
+        unshutup_settings = self._get_object_config(
+            command_settings,
+            "unshutup_settings",
+        )
         sleep_settings = config.get("sleep_settings", {})
         group_card_settings = config.get("group_card_settings", {})
 
         # -- Command config ---------------------------------------------- #
         self.shutup_cmds: list[str] = normalize_commands(
-            command_settings.get("shutup_commands", ["闭嘴"]),
+            shutup_settings.get("shutup_commands", ["闭嘴"]),
             fallback=["闭嘴"],
         )
         self.unshutup_cmds: list[str] = normalize_commands(
-            command_settings.get("unshutup_commands", ["说话"]),
+            unshutup_settings.get("unshutup_commands", ["说话"]),
             fallback=["说话"],
         )
         self.permanent_shutup_cmds: list[str] = normalize_commands(
-            command_settings.get(
-                "permanent_shutup_commands",
-                ["永久闭嘴"],
-            ),
+            permanent_shutup_settings.get("permanent_shutup_commands", ["永久闭嘴"]),
             fallback=["永久闭嘴"],
         )
         self.temp_wake_cmds: list[str] = normalize_commands(
@@ -65,20 +83,67 @@ class ShutupPlugin(Star):
 
         # -- Duration settings ------------------------------------------- #
         self.default_duration: int = clamp_duration(
-            command_settings.get("default_duration", 600),
+            shutup_settings.get("default_duration", 600),
             field_name="default_duration",
         )
         self.shutup_tool_max_duration: int = clamp_duration(
-            command_settings.get("shutup_tool_max_duration", 3600),
+            shutup_settings.get("shutup_tool_max_duration", 3600),
             default=3600,
             min_val=1,
             field_name="shutup_tool_max_duration",
         )
 
         # -- Reply templates --------------------------------------------- #
-        self.shutup_reply: str = command_settings.get("shutup_reply", "好的，我闭嘴了~")
-        self.unshutup_reply: str = command_settings.get(
-            "unshutup_reply", "好的，我恢复说话了~"
+        self.shutup_reply: str = str(
+            shutup_settings.get("shutup_reply", "好的，我闭嘴了~")
+        )
+        self.unshutup_reply: str = str(
+            unshutup_settings.get("unshutup_reply", "好的，我恢复说话了~")
+        )
+        self.permanent_shutup_reply: str = str(
+            permanent_shutup_settings.get(
+                "permanent_shutup_reply", "好的，我会一直闭嘴，直到你让我说话。"
+            )
+        )
+        self.shutup_llm_reply_enabled: bool = shutup_settings.get(
+            "shutup_llm_reply_enabled",
+            False,
+        )
+        self.unshutup_llm_reply_enabled: bool = unshutup_settings.get(
+            "unshutup_llm_reply_enabled",
+            False,
+        )
+        self.permanent_shutup_llm_reply_enabled: bool = permanent_shutup_settings.get(
+            "permanent_shutup_llm_reply_enabled",
+            False,
+        )
+        self.shutup_llm_prompt: str = self._normalize_optional_text(
+            shutup_settings.get(
+                "shutup_llm_prompt",
+                "生成一句简短自然的中文回复，表示你将按要求暂时闭嘴。"
+                "语气可以轻松一点，但不要嘲讽或冒犯用户。"
+                "闭嘴时长：{duration} 秒。默认回复：{default_reply}。"
+                "只输出回复文本，不要解释。",
+            ),
+            field_name="shutup_llm_prompt",
+        )
+        self.permanent_shutup_llm_prompt: str = self._normalize_optional_text(
+            permanent_shutup_settings.get(
+                "permanent_shutup_llm_prompt",
+                "生成一句简短自然的中文回复，表示你会保持安静，直到用户允许你说话。"
+                "语气可以轻松一点，但不要嘲讽或冒犯用户。"
+                "默认回复：{default_reply}。只输出回复文本，不要解释。",
+            ),
+            field_name="permanent_shutup_llm_prompt",
+        )
+        self.unshutup_llm_prompt: str = self._normalize_optional_text(
+            unshutup_settings.get(
+                "unshutup_llm_prompt",
+                "生成一句简短自然的中文回复，表示你已恢复说话。"
+                "语气友好轻松。已安静约 {duration} 秒。"
+                "默认回复：{default_reply}。只输出回复文本，不要解释。",
+            ),
+            field_name="unshutup_llm_prompt",
         )
 
         # -- Group card -------------------------------------------------- #
@@ -165,15 +230,6 @@ class ShutupPlugin(Star):
             raw_llm_tools = []
         self.llm_tool_options: set[str] = set(raw_llm_tools)
 
-        self.LLM_TOOL_NAME_BY_OPTION = {
-            "shutup": "shutup",
-            "not_reply": "not_reply",
-        }
-        self.LEGACY_LLM_TOOL_NAME_BY_OPTION = {
-            "suppress_reply": "not_reply",
-        }
-        self.LEGACY_LLM_TOOL_NAMES = {"shutup_suppress_reply"}
-
         self._register_llm_tools()
 
         # -- Load-time summary -------------------------------------------- #
@@ -197,6 +253,36 @@ class ShutupPlugin(Star):
                 f"睡眠模板: {self.sleep_group_card_template} | "
                 f"临时唤醒模板: {self.temp_wake_group_card_template}"
             )
+        enabled_llm_replies = [
+            name
+            for name, enabled in (
+                ("闭嘴", self.shutup_llm_reply_enabled),
+                ("永久闭嘴", self.permanent_shutup_llm_reply_enabled),
+                ("说话", self.unshutup_llm_reply_enabled),
+            )
+            if enabled
+        ]
+        if enabled_llm_replies:
+            logger.info(
+                "[Shutup] 指令 LLM 回复已启用: %s",
+                ",".join(enabled_llm_replies),
+            )
+
+    @staticmethod
+    def _get_object_config(parent: dict[str, Any], key: str) -> dict[str, Any]:
+        value = parent.get(key, {})
+        return value if isinstance(value, dict) else {}
+
+    @staticmethod
+    def _normalize_optional_text(value: object, field_name: str) -> str:
+        """Normalize optional text config, treating invalid values as disabled."""
+
+        if isinstance(value, str):
+            return value
+        if value is None:
+            return ""
+        logger.warning(f"[Shutup] {field_name} must be a string, ignoring it")
+        return ""
 
     def _apply_configured_commands(self) -> None:
         """Apply configured command names to AstrBot framework command filters."""
@@ -254,9 +340,7 @@ class ShutupPlugin(Star):
         """Remove this plugin's LLM tool from AstrBot's tool list."""
 
         tool_mgr = self.context.get_llm_tool_manager()
-        tool_names = (
-            set(self.LLM_TOOL_NAME_BY_OPTION.values()) | self.LEGACY_LLM_TOOL_NAMES
-        )
+        tool_names = set(self.LLM_TOOL_NAME_BY_OPTION.values())
         tool_mgr.func_list = [
             tool
             for tool in tool_mgr.func_list
@@ -275,14 +359,10 @@ class ShutupPlugin(Star):
             logger.info("[Shutup] LLM 工具未启用或未选择，跳过注册")
             return
 
-        tool_name_by_option = {
-            **self.LEGACY_LLM_TOOL_NAME_BY_OPTION,
-            **self.LLM_TOOL_NAME_BY_OPTION,
-        }
         enabled_tool_names = {
-            tool_name_by_option[key]
+            self.LLM_TOOL_NAME_BY_OPTION[key]
             for key in self.llm_tool_options
-            if key in tool_name_by_option
+            if key in self.LLM_TOOL_NAME_BY_OPTION
         }
 
         tools = [t for t in build_llm_tools(self) if t.name in enabled_tool_names]
@@ -480,8 +560,7 @@ class ShutupPlugin(Star):
         if "shutup" not in self.llm_tool_options:
             return "LLM 工具未启用"
 
-        time_units = {"s": 1, "m": 60, "h": 3600, "d": 86400}
-        duration_seconds = int(duration * time_units.get(str(unit).lower(), 60))
+        duration_seconds = int(duration * TIME_UNITS.get(str(unit).lower(), 60))
 
         if duration_seconds > self.shutup_tool_max_duration:
             duration_seconds = self.shutup_tool_max_duration

@@ -7,6 +7,8 @@ from datetime import datetime
 
 from astrbot.api import logger
 
+TIME_UNITS: dict[str, int] = {"s": 1, "m": 60, "h": 3600, "d": 86400}
+
 # ------------------------------------------------------------------ #
 #  Time-range parsing
 # ------------------------------------------------------------------ #
