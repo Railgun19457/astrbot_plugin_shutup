@@ -114,7 +114,7 @@
         "type": "string",
         "description": "临时唤醒成功回复",
         "hint": "支持占位符 {wake_minutes}(临时唤醒分钟数)、{temporary_wake_duration}(临时唤醒秒数)、{wake_command}(临时唤醒指令)。启用 LLM 生成后，仅在生成失败时作为兜底回复",
-        "default": "我被叫醒了，还能陪你聊 {wake_minutes} 分钟哦。"
+        "default": "唔……嗯？干嘛..."
       },
       "temporary_wake_llm_reply_enabled": {
         "type": "bool",
@@ -126,7 +126,7 @@
         "type": "text",
         "description": "临时唤醒 LLM 提示词",
         "hint": "支持占位符 {wake_command}(临时唤醒指令)、{wake_minutes}(临时唤醒分钟数)、{temporary_wake_duration}(临时唤醒秒数)、{sender_name}(发送者昵称)",
-        "default": "用户刚刚在睡眠时段用“{wake_command}”叫醒了你。请用简短、自然、带一点刚睡醒感觉的中文回复用户，告诉用户你会临时陪聊 {wake_minutes} 分钟。不要解释规则。"
+        "default": "用户刚刚在睡眠时段用“{wake_command}”叫醒了你。请用简短、自然、带一点刚睡醒感觉的中文回复用户，不要解释规则。"
       }
     }
   },
@@ -156,7 +156,7 @@
         "type": "string",
         "description": "临时唤醒状态群昵称显示模板",
         "hint": "睡眠时段内被临时唤醒时使用。支持占位符:\n {remaining} - 临时唤醒剩余分钟数\n {original_card} - 原始群昵称(群名片)\n {original_nickname} - 原始 QQ 昵称\n {original_name} - 原始名称(优先使用群昵称，若无则使用 QQ 昵称)\n {status} - 当前状态标识",
-        "default": "{original_name}[临时唤醒 {remaining} 分钟]"
+        "default": "{original_name}[清醒时长 {remaining} 分钟]"
       }
     }
   }
