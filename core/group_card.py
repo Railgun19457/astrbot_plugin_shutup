@@ -81,14 +81,16 @@ class GroupCardUpdater:
                             )
                         continue
 
-                    if origin in self._plugin._store:
-                        self._plugin._store.remove(origin)
-                        changed = True
-
+                    # 先 update(0) 恢复昵称，此时 store 还有 original_card
                     if event is not None:
                         await self.update(event, origin, 0)
                     else:
                         self.origin_to_event_map.pop(origin, None)
+
+                    # 昵称恢复完成后再清理 store
+                    if origin in self._plugin._store:
+                        self._plugin._store.remove(origin)
+                        changed = True
 
                 if changed:
                     self._plugin._store.save()
