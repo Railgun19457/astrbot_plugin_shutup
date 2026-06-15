@@ -1,5 +1,11 @@
 ## 更新日志
 
+### v1.7.5
+- 修复群昵称显示模板启用时，闭嘴过期自动恢复会先清理持久化记录，导致 `original_card` 丢失并可能把带徽章昵称当作原昵称的问题
+- 闭嘴过期自动恢复群昵称时，改为先恢复昵称再清理 `silence_map.json` 记录，避免徽章反复叠加
+- 修复插件重载/启动后只恢复闭嘴状态但不重新应用已持久化群昵称的问题
+- 群昵称更新现在可在缺少历史消息事件时，通过持久化会话与 aiocqhttp 运行实例重新设置当前闭嘴群昵称
+
 ### v1.7.4
 - 新增闭嘴、永久闭嘴、说话指令的可选 LLM 回复生成
 - 新增 `shutup_llm_reply_enabled`、`permanent_shutup_llm_reply_enabled`、`unshutup_llm_reply_enabled` 开关

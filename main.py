@@ -232,6 +232,9 @@ class ShutupPlugin(Star):
 
         self._register_llm_tools()
 
+        if self.group_card_enabled:
+            self._group_card.schedule_restore_from_store()
+
         # -- Load-time summary -------------------------------------------- #
         time_info = ""
         if self.sleep_enabled:
@@ -715,6 +718,11 @@ class ShutupPlugin(Star):
     # ------------------------------------------------------------------ #
     #  Lifecycle
     # ------------------------------------------------------------------ #
+
+    @filter.on_platform_loaded()
+    async def restore_group_card_state_on_platform_loaded(self) -> None:
+        if self.group_card_enabled:
+            self._group_card.schedule_restore_from_store()
 
     async def terminate(self) -> None:
         await self._group_card.cancel()
